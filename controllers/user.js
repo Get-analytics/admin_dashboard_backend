@@ -435,7 +435,7 @@ const dashboardData = async (req, res) => {
 
       // Add the record to the appropriate group.
       groupedData[category].push({
-        url: `http://localhost:3000/${urlDoc.shortId}`,
+        url: `https://filescence-rho.vercel.app/${urlDoc.shortId}`,
         createdDate: createdDateObj.toISOString().split("T")[0], // Format as "YYYY-MM-DD"
         timeAgo: timeAgo
       });
