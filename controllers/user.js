@@ -706,7 +706,7 @@ const DeleteSession = async ( req , res ) =>{
     }
 
     // Find and delete the record matching url and category.
-    const deletedRecord = await ShortenedUrl.deleteOne({ shortId , mimeType});
+    const deletedRecord = await ShortenedUrl.deleteOne({ shortId });
     
     console.log(deletedRecord)
 
