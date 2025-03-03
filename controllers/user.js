@@ -1590,8 +1590,25 @@ const getVideoAnalytics = async (req, res) => {
     const videoAnalytics = await VideoAnalytics.find({ videoId });
     console.log(videoAnalytics, "Video Analytics Data");
 
+    // If no video analytics data is found, return a response with dummy data
     if (!videoAnalytics || videoAnalytics.length === 0) {
-      return res.status(404).json({ message: 'Video document not found' });
+      console.log("No video analytics found, returning dummy data.");
+      
+      const dummyData = {
+        totalTimeSpent: 0,
+        playCount: 0,
+        pauseCount: 0,
+        seekCount: 0,
+        averageWatchTime: 0,
+        userCounts: {
+          newuser: { video: 0 },
+          returneduser: { video: 0 },
+        },
+        totalsession: 0,
+        bounceRate: 0,
+      };
+
+      return res.json(dummyData);
     }
 
     let totalWatchTime = 0;
@@ -1634,13 +1651,13 @@ const getVideoAnalytics = async (req, res) => {
     // Find New Users: Users present in UserVisit and exist in NewUser collection with count.video > 0
     const newUsers = await newUser.find({
       userId: { $in: visitedUserIds },
-      "count.video": { $gt: 0 }  
+      "count.video": { $gt: 0 }
     });
 
     // Find Returned Users: Users present in UserVisit and exist in ReturnedUser collection with count.video > 0
     const returnedUsers = await ReturnedUser.find({
       userId: { $in: visitedUserIds },
-      "count.video": { $gt: 0 }  
+      "count.video": { $gt: 0 }
     });
 
     console.log(newUsers, returnedUsers, "New Users and Returned Users");
@@ -1658,7 +1675,7 @@ const getVideoAnalytics = async (req, res) => {
 
     // Prepare Response Data
     const responseData = {
-      totalTimeSpent : totalWatchTime,
+      totalTimeSpent: totalWatchTime,
       playCount,
       pauseCount,
       seekCount,
@@ -1681,6 +1698,7 @@ const getVideoAnalytics = async (req, res) => {
     });
   }
 };
+
 
 
 
