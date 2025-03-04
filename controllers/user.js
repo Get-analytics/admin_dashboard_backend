@@ -270,6 +270,22 @@ const uploadFile = async (req, res) => {
   }
 };
 
+// Function to get total pages using pdf.js
+async function getTotalPages(pdfUrl) {
+  try {
+    const response = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+    const pdfData = new Uint8Array(response.data);
+    
+    // Load the PDF data using pdf.js
+    const pdfDocument = await pdfjsLib.getDocument(pdfData).promise;
+    return pdfDocument.numPages;
+  } catch (error) {
+    console.error("Error fetching PDF or counting pages:", error);
+    throw new Error("Failed to count pages in the PDF.");
+  }
+}
+
+
 // Helper function to fetch page count using PDF.co API with a timeout
 // Helper function to fetch page count using PDF.co API with a timeout
 const getParsedDocumentDataWithTimeout = async (pdfUrl) => {
