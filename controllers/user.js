@@ -13,7 +13,8 @@ const axios = require('axios');
 const { v4: uuidv4 } = require("uuid");  // Import the UUID generator
 const moment = require("moment");
 const DocxAnalytics = require("../models/Docxanalytics");
-const Webanalytics = require('../models/Webanalytics')
+const Webanalytics = require('../models/Webanalytics');
+const pdfjsLib = require('pdfjs-dist'); // Import pdfjs
 
 
 
@@ -165,8 +166,8 @@ const uploadFile = async (req, res) => {
             if (apiResponse.data.Files && apiResponse.data.Files[0]) {
               const pdfUrl = apiResponse.data.Files[0].Url;
 
-              // Use the timeout mechanism to get the total page count
-              const totalPages = await getParsedDocumentDataWithTimeout(pdfUrl);
+              // Use pdf.js to get the total page count
+              const totalPages = await getTotalPages(pdfUrl);
 
               const newShortenedUrl = new ShortenedUrl({
                 shortId,
@@ -204,8 +205,8 @@ const uploadFile = async (req, res) => {
           }
         } else if (req.file.mimetype === "application/pdf") {
           try {
-            // Get the total page count from the PDF.co API using the timeout function
-            const totalPages = await getParsedDocumentDataWithTimeout(cloudinaryResult.secure_url);
+            // Use pdf.js to get the total page count for the PDF
+            const totalPages = await getTotalPages(cloudinaryResult.secure_url);
 
             const newShortenedUrl = new ShortenedUrl({
               shortId,
@@ -229,9 +230,9 @@ const uploadFile = async (req, res) => {
               originalUrl: cloudinaryResult.secure_url,
             });
           } catch (error) {
-            console.error("Error calling PDF.co API:", error);
+            console.error("Error reading PDF with pdf.js:", error);
             return res.status(500).json({
-              message: "Error fetching page count from PDF.co",
+              message: "Error reading PDF with pdf.js",
               error: error.message,
             });
           }
