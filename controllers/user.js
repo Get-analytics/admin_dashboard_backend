@@ -694,21 +694,20 @@ const Docx_docxanalytics = async (req, res) => {
 
 
 
-const DeleteSession = async ( req , res ) =>{
-
+const DeleteSession = async (req, res) => {
   try {
     const { shortId, mimeType } = req.body;
 
-    console.log(shortId , mimeType)
-    
+    console.log(shortId, mimeType);
+
     if (!shortId || !mimeType) {
       return res.status(400).json({ message: "URL and category are required." });
     }
 
-    // Find and delete the record matching url and category.
-    const deletedRecord = await ShortenedUrl.deleteOne({ shortId });
-    
-    console.log(deletedRecord)
+    // Find and delete the record matching shortId.
+    const deletedRecord = await ShortenedUrl.findOneAndDelete({ shortId });
+
+    console.log(deletedRecord);
 
     if (!deletedRecord) {
       return res.status(404).json({ message: "Record not found." });
@@ -716,7 +715,7 @@ const DeleteSession = async ( req , res ) =>{
 
     return res.status(200).json({
       message: "Record deleted successfully.",
-      data: deletedRecord,
+      data: deletedRecord,  // Send the deleted record in the response
     });
   } catch (error) {
     console.error("Error deleting record:", error);
@@ -725,8 +724,7 @@ const DeleteSession = async ( req , res ) =>{
       error: error.message,
     });
   }
-
-}
+};
 
 
 
