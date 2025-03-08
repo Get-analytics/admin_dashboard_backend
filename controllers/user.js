@@ -14,7 +14,6 @@ const { v4: uuidv4 } = require("uuid");  // Import the UUID generator
 const moment = require("moment");
 const DocxAnalytics = require("../models/Docxanalytics");
 const Webanalytics = require('../models/Webanalytics');
-const pdfjsLib = require('pdfjs-dist'); // Import pdfjs
 
 
 
@@ -91,6 +90,8 @@ const register = async (req, res) => {
 // ------------------------
 // UPLOAD FILE ENDPOINT
 // ------------------------
+
+
 const uploadFile = async (req, res) => {
   try {
     const { shortId, uuid } = req.body;
@@ -157,7 +158,7 @@ const uploadFile = async (req, res) => {
               },
               {
                 headers: {
-                  Authorization: `Bearer secret_DTUuidKW3kQeiclx`, // Replace with your actual API key
+                  Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`, // Replace with your actual API key
                   "Content-Type": "application/json",
                 },
               }
@@ -166,35 +167,56 @@ const uploadFile = async (req, res) => {
             if (apiResponse.data.Files && apiResponse.data.Files[0]) {
               const pdfUrl = apiResponse.data.Files[0].Url;
 
-              // Use pdf.js to get the total page count
-              const totalPages = await getTotalPages(pdfUrl);
+              // Fetch the PDF file from the URL
+              const pdfBuffer = await axios.get(pdfUrl, { responseType: "arraybuffer" });
 
-              const newShortenedUrl = new ShortenedUrl({
-                shortId,
-                mimeType: req.file.mimetype,
-                originalUrl: pdfUrl,
-                userUuid: uuid,
-                totalPages: totalPages,
-              });
-
-              await newShortenedUrl.save();
-
-              return res.status(200).json({
-                message: "File uploaded and converted to PDF successfully",
-                file: {
-                  public_id: cloudinaryResult.public_id,
-                  url: cloudinaryResult.secure_url,
-                  mimeType: req.file.mimetype,
-                  pdfUrl: pdfUrl,
-                  totalPages: totalPages,
+              // Upload the PDF to Cloudinary
+              const uploadResult = cloudinary.uploader.upload_stream(
+                {
+                  resource_type: "raw",
+                  folder: "uploads",
+                  public_id: `${req.file.originalname.split(".")[0]}_converted`,
+                  format: "pdf",
                 },
-                shortId,
-                originalUrl: cloudinaryResult.secure_url,
-              });
+                async (uploadError, uploadedPdfResult) => {
+                  if (uploadError) {
+                    console.error("Cloudinary upload error:", uploadError);
+                    return res.status(500).json({
+                      message: "Error uploading converted PDF to Cloudinary",
+                      error: uploadError,
+                    });
+                  }
+
+                  // After successfully uploading the PDF, fetch the total page count
+                  const totalPages = await getTotalPages(uploadedPdfResult.secure_url);
+
+                  const newShortenedUrl = new ShortenedUrl({
+                    shortId,
+                    mimeType: "application/pdf",
+                    originalUrl: uploadedPdfResult.secure_url,
+                    userUuid: uuid,
+                    totalPages: totalPages,
+                  });
+
+                  await newShortenedUrl.save();
+
+                  return res.status(200).json({
+                    message: "File uploaded and converted to PDF successfully",
+                    file: {
+                      public_id: uploadedPdfResult.public_id,
+                      url: uploadedPdfResult.secure_url,
+                      mimeType: "application/pdf",
+                      totalPages: totalPages,
+                    },
+                    shortId,
+                    originalUrl: uploadedPdfResult.secure_url,
+                  });
+                }
+              );
+
+              uploadResult.end(pdfBuffer.data); // Upload the PDF buffer to Cloudinary
             } else {
-              return res
-                .status(500)
-                .json({ message: "Failed to convert DOCX to PDF" });
+              return res.status(500).json({ message: "Failed to convert DOCX to PDF" });
             }
           } catch (conversionError) {
             console.error("Conversion API error:", conversionError);
@@ -270,14 +292,19 @@ const uploadFile = async (req, res) => {
   }
 };
 
+
+
 // Function to get total pages using pdf.js
 async function getTotalPages(pdfUrl) {
   try {
+    // Dynamically import pdf.js in a CommonJS environment
+    const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
+
     const response = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
     const pdfData = new Uint8Array(response.data);
-    
-    // Load the PDF data using pdf.js
-    const pdfDocument = await pdfjsLib.getDocument(pdfData).promise;
+
+    // Load the PDF document
+    const pdfDocument = await pdfjsLib.getDocument({ data: pdfData }).promise;
     return pdfDocument.numPages;
   } catch (error) {
     console.error("Error fetching PDF or counting pages:", error);
