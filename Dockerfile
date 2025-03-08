@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Dependencies copy and install pannudhu
 COPY package*.json ./
-RUN npm install --force
+RUN npm install 
 
 # App source code copy pannudhu
 COPY . .
