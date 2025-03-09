@@ -92,6 +92,7 @@ const register = async (req, res) => {
 // ------------------------
 
 
+
 const uploadFile = async (req, res) => {
   try {
     const { shortId, uuid } = req.body;
@@ -192,7 +193,8 @@ const uploadFile = async (req, res) => {
 
                   const newShortenedUrl = new ShortenedUrl({
                     shortId,
-                    mimeType: "application/pdf",
+                    fileName: req.file.originalname, // store the file name
+                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     originalUrl: uploadedPdfResult.secure_url,
                     userUuid: uuid,
                     totalPages: totalPages,
@@ -232,6 +234,7 @@ const uploadFile = async (req, res) => {
 
             const newShortenedUrl = new ShortenedUrl({
               shortId,
+              fileName: req.file.originalname, // store the file name
               mimeType: req.file.mimetype,
               originalUrl: cloudinaryResult.secure_url,
               userUuid: uuid,
@@ -262,6 +265,7 @@ const uploadFile = async (req, res) => {
           // For files that do not need conversion
           const newShortenedUrl = new ShortenedUrl({
             shortId,
+            fileName: req.file.originalname, // store the file name
             mimeType: req.file.mimetype,
             originalUrl: cloudinaryResult.secure_url,
             userUuid: uuid,
@@ -291,7 +295,6 @@ const uploadFile = async (req, res) => {
     });
   }
 };
-
 
 
 // Function to get total pages using pdf.js
