@@ -396,6 +396,7 @@ const uploadurl = async (req, res) => {
     // Create and save a new shortened URL document including the user UUID
     const shortenedUrl = new ShortenedUrl({
       originalUrl,
+      fileName: originalUrl,
       shortId,
       mimeType: "weblink", // For URL uploads
       userUuid: uuid,      // Save the user UUID
