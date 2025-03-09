@@ -524,14 +524,11 @@ const Pdf_pdfanalytics = async (req, res) => {
     let totalTimeSpent = 0;
     let totalPagesVisited = 0;
     let mostVisitedPage = '';
-    let userVisitIds = []; // Store userVisit ObjectIds
     let bounceSessions = 0;
-    let userIds = new Set(); // Store unique userIds
 
     pdfAnalytics.forEach((doc) => {
       totalTimeSpent += doc.totalTimeSpent;
       totalPagesVisited += doc.totalPagesVisited;
-      userVisitIds.push(doc.userVisit); // Collect userVisit IDs
 
       if (!mostVisitedPage && doc.mostVisitedPage) {
         mostVisitedPage = doc.mostVisitedPage;
@@ -545,52 +542,39 @@ const Pdf_pdfanalytics = async (req, res) => {
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
     console.log(averageTimeSpent, "Average Time Spent");
 
-    // ------------------------------
-    // Fetch userIds from UserVisit model using userVisitIds
-    const userVisits = await UserVisit.find({ _id: { $in: userVisitIds } });
-    userVisits.forEach((userVisit) => {
-      userIds.add(userVisit.userId); // Collect unique userIds
-    });
-
-    console.log(userIds, "User IDs from User Visit");
-
-    // Convert userIds Set to an array for query
-    const userIdArray = [...userIds];
-
-    console.log(userIdArray, "User IDs to use for new/returned user queries");
-
-    // ------------------------------
-    // NEW USER COUNT - Return the count of docx in the new user count
+    // NEW USER COUNT - Query by checking if the pdfId exists in the documentIds array
     const newUsers = await newUser.find({
-      userId: { $in: userIdArray },
+      documentIds: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Get the total count of docx category for new users
-    const newUserCategoryCount = newUsers.reduce((sum, user) => sum + (user.count[normalizedCategory] || 0), 0);
+    // Sum up the counts for the given category from the new user documents
+    const newUserCategoryCount = newUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
-    // ------------------------------
-    // RETURNED USER COUNT - Return the count of docx in the returned user count
+    // RETURNED USER COUNT - Query similarly using documentIds
     const returnedUsers = await ReturnedUser.find({
-      userId: { $in: userIdArray },
+      documentIds: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Get the total count of docx category for returned users
-    const returnedUserCategoryCount = returnedUsers.reduce((sum, user) => sum + (user.count[normalizedCategory] || 0), 0);
+    const returnedUserCategoryCount = returnedUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("Returned user count for", normalizedCategory, ":", returnedUserCategoryCount);
-    // ------------------------------
-    // TOTAL SESSION COUNT
+
+    // TOTAL SESSION COUNT from the PDF analytics
     const totalSessions = pdfAnalytics.length;
     console.log("Total sessions for this PDF:", totalSessions);
 
-    // ------------------------------
     // Calculate the Bounce Rate
     const bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
     console.log("Bounce Rate:", bounceRate);
 
-    // ------------------------------
     // Prepare the response data
     const responseData = {
       totalPagesVisited,
@@ -617,6 +601,7 @@ const Pdf_pdfanalytics = async (req, res) => {
 };
 
 
+
 const Docx_docxanalytics = async (req, res) => {
   try {
     const { url, category } = req.body;
@@ -630,7 +615,9 @@ const Docx_docxanalytics = async (req, res) => {
     const docxId = url.split('/').pop();
     console.log(docxId, "docxId");
 
-    // Fetch all analytics data for the given docxId
+    // Fetch all analytics data for the given docxId.
+    // NOTE: If your analytics collection stores the docx document identifier under a different field than "pdfId",
+    // update this query accordingly.
     const docxAnalytics = await Docxanalytics.find({ pdfId: docxId });
     console.log(docxAnalytics, "docxAnalytics");
 
@@ -642,13 +629,10 @@ const Docx_docxanalytics = async (req, res) => {
     let totalPagesVisited = 0;
     let mostVisitedPage = '';
     let bounceSessions = 0;
-    let userVisitIds = []; // Store userVisit ObjectIds
-    let userIds = new Set(); // Store unique userIds
 
     docxAnalytics.forEach((doc) => {
       totalTimeSpent += doc.totalTimeSpent;
       totalPagesVisited += doc.totalPagesVisited;
-      userVisitIds.push(doc.userVisit); // Collect userVisit IDs
 
       if (!mostVisitedPage && doc.mostVisitedPage) {
         mostVisitedPage = doc.mostVisitedPage;
@@ -662,53 +646,39 @@ const Docx_docxanalytics = async (req, res) => {
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
     console.log(averageTimeSpent, "Average Time Spent");
 
-    // ------------------------------
-    // Fetch userIds from UserVisit model using userVisitIds
-    const userVisits = await UserVisit.find({ _id: { $in: userVisitIds } });
-    userVisits.forEach((userVisit) => {
-      userIds.add(userVisit.userId); // Collect unique userIds
-    });
-
-    console.log(userIds, "User IDs from User Visit");
-
-    // Convert userIds Set to an array for query
-    const userIdArray = [...userIds];
-
-    console.log(userIdArray, "User IDs to use for new/returned user queries");
-
-    // ------------------------------
-    // NEW USER COUNT - Return the count of docx in the new user count
+    // Instead of fetching userIds from UserVisit, we directly query the newUser and ReturnedUser collections
+    // using the docxId in the documentIds array.
     const newUsers = await newUser.find({
-      userId: { $in: userIdArray },
+      documentIds: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Get the total count of docx category for new users
-    const newUserCategoryCount = newUsers.reduce((sum, user) => sum + (user.count[normalizedCategory] || 0), 0);
+    // Sum the count for the given category from the new user documents.
+    const newUserCategoryCount = newUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
-    // ------------------------------
-    // RETURNED USER COUNT - Return the count of docx in the returned user count
     const returnedUsers = await ReturnedUser.find({
-      userId: { $in: userIdArray },
+      documentIds: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Get the total count of docx category for returned users
-    const returnedUserCategoryCount = returnedUsers.reduce((sum, user) => sum + (user.count[normalizedCategory] || 0), 0);
+    const returnedUserCategoryCount = returnedUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("Returned user count for", normalizedCategory, ":", returnedUserCategoryCount);
 
-    // ------------------------------
-    // TOTAL SESSION COUNT
+    // TOTAL SESSION COUNT from the analytics data
     const totalSessions = docxAnalytics.length;
     console.log("Total sessions for this DOCX:", totalSessions);
 
-    // ------------------------------
     // Calculate the Bounce Rate
     const bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
     console.log("Bounce Rate:", bounceRate);
 
-    // ------------------------------
     // Prepare the response data
     const responseData = {
       totalPagesVisited,
@@ -733,7 +703,6 @@ const Docx_docxanalytics = async (req, res) => {
     });
   }
 };
-
 
 
 
