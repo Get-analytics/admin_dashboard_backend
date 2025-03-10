@@ -457,33 +457,23 @@ const dashboardData = async (req, res) => {
       let timeAgo = "";
 
       if (diffSeconds < 60) {
-        // Less than 60 seconds
         timeAgo = `${diffSeconds} seconds ago`;
       } else if (diffSeconds < 3600) {
-        // Less than 60 minutes
-        const diffMinutes = Math.floor(diffSeconds / 60);
-        timeAgo = `${diffMinutes} minutes ago`;
+        timeAgo = `${Math.floor(diffSeconds / 60)} minutes ago`;
       } else if (diffSeconds < 86400) {
-        // Less than 24 hours
-        const diffHours = Math.floor(diffSeconds / 3600);
-        timeAgo = `${diffHours} hours ago`;
+        timeAgo = `${Math.floor(diffSeconds / 3600)} hours ago`;
       } else if (diffSeconds < 2592000) {
-        // Less than 30 days
-        const diffDays = Math.floor(diffSeconds / 86400);
-        timeAgo = `${diffDays} days ago`;
+        timeAgo = `${Math.floor(diffSeconds / 86400)} days ago`;
       } else if (diffSeconds < 31536000) {
-        // 30 days or more but less than 365 days => show months
-        const diffMonths = Math.floor(diffSeconds / 2592000); // Approximate: 30 days per month
-        timeAgo = `${diffMonths} month(s) ago`;
+        timeAgo = `${Math.floor(diffSeconds / 2592000)} month(s) ago`;
       } else {
-        // 365 days or more => show years
-        const diffYears = Math.floor(diffSeconds / 31536000); // Approximate: 365 days per year
-        timeAgo = `${diffYears} year(s) ago`;
+        timeAgo = `${Math.floor(diffSeconds / 31536000)} year(s) ago`;
       }
 
       // Add the record to the appropriate group.
       groupedData[category].push({
         url: `https://filescence-rho.vercel.app/${urlDoc.shortId}`,
+        fileName: urlDoc.fileName || "N/A", // Include fileName in response
         createdDate: createdDateObj.toISOString().split("T")[0], // Format as "YYYY-MM-DD"
         timeAgo: timeAgo
       });
@@ -502,7 +492,6 @@ const dashboardData = async (req, res) => {
     });
   }
 };
-
 
 const Pdf_pdfanalytics = async (req, res) => {
   try {
