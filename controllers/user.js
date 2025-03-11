@@ -608,8 +608,6 @@ const Docx_docxanalytics = async (req, res) => {
     console.log(docxId, "docxId");
 
     // Fetch all analytics data for the given docxId.
-    // NOTE: If your analytics collection stores the docx document identifier under a different field than "pdfId",
-    // update this query accordingly.
     const docxAnalytics = await Docxanalytics.find({ pdfId: docxId });
     console.log(docxAnalytics, "docxAnalytics");
 
@@ -638,22 +636,21 @@ const Docx_docxanalytics = async (req, res) => {
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
     console.log(averageTimeSpent, "Average Time Spent");
 
-    // Instead of fetching userIds from UserVisit, we directly query the newUser and ReturnedUser collections
-    // using the docxId in the documentIds array.
-    const newUsers = await newUser.find({
-      documentIds: docxId,
+    // Query NewUser using documentId (now a string)
+    const newUsers = await NewUser.find({
+      documentId: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Sum the count for the given category from the new user documents.
     const newUserCategoryCount = newUsers.reduce(
       (sum, user) => sum + (user.count[normalizedCategory] || 0),
       0
     );
     console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
+    // Query ReturnedUser using documentId (now a string)
     const returnedUsers = await ReturnedUser.find({
-      documentIds: docxId,
+      documentId: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
@@ -695,6 +692,7 @@ const Docx_docxanalytics = async (req, res) => {
     });
   }
 };
+
 
 
 
