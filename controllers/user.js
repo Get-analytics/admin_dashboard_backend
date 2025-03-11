@@ -536,7 +536,7 @@ const Pdf_pdfanalytics = async (req, res) => {
     console.log(averageTimeSpent, "Average Time Spent");
 
     // NEW USER COUNT - Query using documentId instead of documentIds array
-    const newUsers = await NewUser.find({
+    const newUsers = await newUser.find({
       documentId: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
@@ -637,7 +637,7 @@ const Docx_docxanalytics = async (req, res) => {
     console.log(averageTimeSpent, "Average Time Spent");
 
     // Query NewUser using documentId (now a string)
-    const newUsers = await NewUser.find({
+    const newUsers = await newUser.find({
       documentId: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
