@@ -535,25 +535,23 @@ const Pdf_pdfanalytics = async (req, res) => {
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
     console.log(averageTimeSpent, "Average Time Spent");
 
-    // NEW USER COUNT - Query by checking if the pdfId exists in the documentIds array
-    const newUsers = await newUser.find({
-      documentIds: pdfId,
+    // NEW USER COUNT - Query using documentId instead of documentIds array
+    const newUsers = await NewUser.find({
+      documentId: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Sum up the counts for the given category from the new user documents
-    const newUserCategoryCount = newUsers.reduce(
-      (sum, user) => sum + (user.count[normalizedCategory] || 0),
-      0
-    );
+    // Since NewUser always has count as 1, we directly count the documents
+    const newUserCategoryCount = newUsers.length;
     console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
-    // RETURNED USER COUNT - Query similarly using documentIds
+    // RETURNED USER COUNT - Query using documentId instead of documentIds array
     const returnedUsers = await ReturnedUser.find({
-      documentIds: pdfId,
+      documentId: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
+    // Sum up the counts for the given category from returned user documents
     const returnedUserCategoryCount = returnedUsers.reduce(
       (sum, user) => sum + (user.count[normalizedCategory] || 0),
       0
@@ -592,6 +590,7 @@ const Pdf_pdfanalytics = async (req, res) => {
     });
   }
 };
+
 
 
 
