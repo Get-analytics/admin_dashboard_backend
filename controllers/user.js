@@ -535,35 +535,37 @@ const Pdf_pdfanalytics = async (req, res) => {
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
     console.log(averageTimeSpent, "Average Time Spent");
 
-    // NEW USER COUNT - Query using documentId instead of documentIds array
+    // NEW USER COUNT - Query by checking if the pdfId exists in the documentIds array
     const newUsers = await newUser.find({
       documentId: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Since NewUser always has count as 1, we directly count the documents
-    const newUserCategoryCount = newUsers.length;
+    // Sum up the counts for the given category from the new user documents
+    const newUserCategoryCount = newUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
-    // RETURNED USER COUNT - Query using documentId instead of documentIds array
+    // RETURNED USER COUNT - Query similarly using documentIds
     const returnedUsers = await ReturnedUser.find({
       documentId: pdfId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Sum up the counts for the given category from returned user documents
     const returnedUserCategoryCount = returnedUsers.reduce(
       (sum, user) => sum + (user.count[normalizedCategory] || 0),
       0
     );
     console.log("Returned user count for", normalizedCategory, ":", returnedUserCategoryCount);
 
-    // TOTAL SESSION COUNT from the PDF analytics
-    const totalSessions = pdfAnalytics.length;
-    console.log("Total sessions for this PDF:", totalSessions);
+    // UNIQUE TOTAL SESSION COUNT - Only count unique (userId, pdfId) pairs
+    const uniqueSessions = new Set(pdfAnalytics.map(doc => `${doc.userId}-${doc.pdfId}`)).size;
+    console.log("Total unique sessions for this PDF:", uniqueSessions);
 
     // Calculate the Bounce Rate
-    const bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
+    const bounceRate = uniqueSessions > 0 ? (bounceSessions / uniqueSessions) * 100 : 0;
     console.log("Bounce Rate:", bounceRate);
 
     // Prepare the response data
@@ -576,7 +578,7 @@ const Pdf_pdfanalytics = async (req, res) => {
         returneduser: { [normalizedCategory]: returnedUserCategoryCount },
       },
       mostVisitedPage,
-      totalsession: totalSessions,
+      totalsession: uniqueSessions,  // Unique session count
       bounceRate,
     };
 
@@ -590,8 +592,6 @@ const Pdf_pdfanalytics = async (req, res) => {
     });
   }
 };
-
-
 
 
 const Docx_docxanalytics = async (req, res) => {
