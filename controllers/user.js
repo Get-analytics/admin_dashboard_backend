@@ -600,76 +600,66 @@ const Docx_docxanalytics = async (req, res) => {
     const { url, category } = req.body;
     console.log(req.body, "Request Body");
 
+    // Validate input
+    if (!url || !category) {
+      return res.status(400).json({ message: "URL and category are required" });
+    }
+
     // Normalize category to lowercase
     const normalizedCategory = category.toLowerCase();
     console.log(normalizedCategory, "Normalized Category");
 
-    // Extract the document ID from the URL (assuming the ID is the last segment)
+    // Extract document ID from URL
     const docxId = url.split('/').pop();
+    if (!docxId) {
+      return res.status(400).json({ message: "Invalid document URL" });
+    }
     console.log(docxId, "docxId");
 
-    // Fetch all analytics data for the given docxId.
+    // Fetch analytics data
     const docxAnalytics = await Docxanalytics.find({ pdfId: docxId });
+    if (!docxAnalytics.length) {
+      return res.status(404).json({ message: "DOCX document not found" });
+    }
     console.log(docxAnalytics, "docxAnalytics");
 
-    if (!docxAnalytics || docxAnalytics.length === 0) {
-      return res.status(404).json({ message: 'DOCX document not found' });
-    }
+    // Compute metrics
+    let totalTimeSpent = docxAnalytics.reduce((sum, doc) => sum + doc.totalTimeSpent, 0);
+    let totalPagesVisited = docxAnalytics.reduce((sum, doc) => sum + doc.totalPagesVisited, 0);
+    let mostVisitedPage = docxAnalytics
+      .filter(doc => doc.mostVisitedPage)
+      .sort((a, b) => b.totalPagesVisited - a.totalPagesVisited)[0]?.mostVisitedPage || "";
 
-    let totalTimeSpent = 0;
-    let totalPagesVisited = 0;
-    let mostVisitedPage = '';
-    let bounceSessions = 0;
-
-    docxAnalytics.forEach((doc) => {
-      totalTimeSpent += doc.totalTimeSpent;
-      totalPagesVisited += doc.totalPagesVisited;
-
-      if (!mostVisitedPage && doc.mostVisitedPage) {
-        mostVisitedPage = doc.mostVisitedPage;
-      }
-
-      if (doc.totalPagesVisited === 1) {
-        bounceSessions += 1;
-      }
-    });
-
+    let bounceSessions = docxAnalytics.filter(doc => doc.totalPagesVisited === 1).length;
+    let totalSessions = docxAnalytics.length;
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
-    console.log(averageTimeSpent, "Average Time Spent");
+    let bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
 
-    // Query NewUser using documentId (now a string)
+    console.log({ averageTimeSpent, bounceRate }, "Computed Metrics");
+
+    // Fetch New Users Count
     const newUsers = await newUser.find({
       documentId: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
-
-    const newUserCategoryCount = newUsers.reduce(
+    let newUserCategoryCount = newUsers.reduce(
       (sum, user) => sum + (user.count[normalizedCategory] || 0),
       0
     );
-    console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
-    // Query ReturnedUser using documentId (now a string)
+    // Fetch Returned Users Count
     const returnedUsers = await ReturnedUser.find({
       documentId: docxId,
       [`count.${normalizedCategory}`]: { $gt: 0 },
     });
-
-    const returnedUserCategoryCount = returnedUsers.reduce(
+    let returnedUserCategoryCount = returnedUsers.reduce(
       (sum, user) => sum + (user.count[normalizedCategory] || 0),
       0
     );
-    console.log("Returned user count for", normalizedCategory, ":", returnedUserCategoryCount);
 
-    // TOTAL SESSION COUNT from the analytics data
-    const totalSessions = docxAnalytics.length;
-    console.log("Total sessions for this DOCX:", totalSessions);
+    console.log("User Counts:", { newUserCategoryCount, returnedUserCategoryCount });
 
-    // Calculate the Bounce Rate
-    const bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
-    console.log("Bounce Rate:", bounceRate);
-
-    // Prepare the response data
+    // Prepare response
     const responseData = {
       totalPagesVisited,
       totalTimeSpent,
@@ -686,13 +676,14 @@ const Docx_docxanalytics = async (req, res) => {
     console.log(responseData, "Response Data");
     res.json(responseData);
   } catch (error) {
-    console.error(error);
+    console.error("Error processing DOCX metrics:", error);
     res.status(500).json({
-      message: 'An error occurred while processing the DOCX metrics',
+      message: "An error occurred while processing the DOCX metrics",
       error: error.message,
     });
   }
 };
+
 
 
 
