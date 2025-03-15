@@ -1036,7 +1036,7 @@ const getUserActivitiesByWebId = async (req, res) => {
 
     // Set date filters based on the provided date range
     let matchDateFilter = {};
-    const today = moment().startOf("day");
+    const today = moment().utc().startOf("day");
 
     switch (dateRange) {
       case "today":
@@ -1045,15 +1045,15 @@ const getUserActivitiesByWebId = async (req, res) => {
       case "yesterday":
         matchDateFilter = {
           inTime: {
-            $gte: moment().subtract(1, "days").startOf("day").toDate(),
-            $lt: moment().subtract(1, "days").endOf("day").toDate(),
+            $gte: moment().utc().subtract(1, "days").startOf("day").toDate(),
+            $lt: moment().utc().subtract(1, "days").endOf("day").toDate(),
           },
         };
         break;
       case "lastWeek":
         matchDateFilter = {
           inTime: {
-            $gte: moment().subtract(7, "days").startOf("day").toDate(),
+            $gte: moment().utc().subtract(7, "days").startOf("day").toDate(),
             $lte: today.toDate(),
           },
         };
@@ -1061,8 +1061,8 @@ const getUserActivitiesByWebId = async (req, res) => {
       case "lastMonth":
         matchDateFilter = {
           inTime: {
-            $gte: moment().subtract(1, "months").startOf("month").toDate(),
-            $lte: moment().subtract(1, "months").endOf("month").toDate(),
+            $gte: moment().utc().subtract(1, "months").startOf("month").toDate(),
+            $lte: moment().utc().subtract(1, "months").endOf("month").toDate(),
           },
         };
         break;
@@ -1115,16 +1115,46 @@ const getUserActivitiesByWebId = async (req, res) => {
         timeRange: item._id.timeRange,
         users: item.userCount,
       }));
+    } else if (dateRange === "yesterday") {
+      // Fetch all records from yesterday if no specific time-range data exists
+      const fallbackData = await Webanalytics.find({
+        webId: webId,
+        inTime: {
+          $gte: moment().utc().subtract(1, "days").startOf("day").toDate(),
+          $lt: moment().utc().subtract(1, "days").endOf("day").toDate(),
+        },
+      });
+
+      response = fallbackData.map((record) => ({
+        date: moment(record.inTime).format("YYYY-MM-DD"),
+        timeRange: "00:00-24:00",
+        users: 1, // Assuming each record represents one user visit
+      }));
+
+      if (response.length === 0) {
+        response = [
+          {
+            date: moment().utc().subtract(1, "days").format("YYYY-MM-DD"),
+            timeRange: "00:00-12:00",
+            users: 0,
+          },
+          {
+            date: moment().utc().subtract(1, "days").format("YYYY-MM-DD"),
+            timeRange: "12:00-24:00",
+            users: 0,
+          },
+        ];
+      }
     } else {
-      // If no data, return today's date with 0 users
+      // Default response when no data is found
       response = [
         {
-          date: moment().format("YYYY-MM-DD"),
+          date: moment().utc().format("YYYY-MM-DD"),
           timeRange: "00:00-12:00",
           users: 0,
         },
         {
-          date: moment().format("YYYY-MM-DD"),
+          date: moment().utc().format("YYYY-MM-DD"),
           timeRange: "12:00-24:00",
           users: 0,
         },
@@ -1145,7 +1175,6 @@ const getUserActivitiesByWebId = async (req, res) => {
     });
   }
 };
-
 
 
 
