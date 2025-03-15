@@ -874,7 +874,7 @@ const getUserActivitiesByDocxId = async (req, res) => {
   try {
     console.log("Incoming Request:", req.body); // Log request body
 
-    // Extract the pdfId from the URL in the request body (since docx also uses pdfId)
+    // Extract the pdfId from the URL in the request body (assuming docx uses pdfId)
     const pdfIdFromUrl = req.body.url.split("/").pop();
     console.log("Extracted pdfId:", pdfIdFromUrl); // Log extracted pdfId
 
@@ -883,7 +883,7 @@ const getUserActivitiesByDocxId = async (req, res) => {
 
     // Set date filters based on the provided date range
     let matchDateFilter = {};
-    const today = moment().startOf("day");
+    const today = moment().utc().startOf("day");
 
     switch (dateRange) {
       case "today":
@@ -892,15 +892,15 @@ const getUserActivitiesByDocxId = async (req, res) => {
       case "yesterday":
         matchDateFilter = {
           createdAt: {
-            $gte: moment().subtract(1, "days").startOf("day").toDate(),
-            $lt: moment().subtract(1, "days").endOf("day").toDate(),
+            $gte: moment().utc().subtract(1, "days").startOf("day").toDate(),
+            $lt: moment().utc().subtract(1, "days").endOf("day").toDate(),
           },
         };
         break;
       case "lastWeek":
         matchDateFilter = {
           createdAt: {
-            $gte: moment().subtract(7, "days").startOf("day").toDate(),
+            $gte: moment().utc().subtract(7, "days").startOf("day").toDate(),
             $lte: today.toDate(),
           },
         };
@@ -908,8 +908,8 @@ const getUserActivitiesByDocxId = async (req, res) => {
       case "lastMonth":
         matchDateFilter = {
           createdAt: {
-            $gte: moment().subtract(1, "months").startOf("month").toDate(),
-            $lte: moment().subtract(1, "months").endOf("month").toDate(),
+            $gte: moment().utc().subtract(1, "months").startOf("month").toDate(),
+            $lte: moment().utc().subtract(1, "months").endOf("month").toDate(),
           },
         };
         break;
@@ -951,7 +951,7 @@ const getUserActivitiesByDocxId = async (req, res) => {
 
     console.log("Aggregation Pipeline:", JSON.stringify(aggregatePipeline, null, 2)); // Log pipeline
 
-    const userActivities = await Docxanalytics.aggregate(aggregatePipeline); // Using Docxanalytics collection
+    let userActivities = await Docxanalytics.aggregate(aggregatePipeline);
     console.log("Fetched User Activities:", userActivities); // Log fetched activities
 
     let response = [];
@@ -962,16 +962,46 @@ const getUserActivitiesByDocxId = async (req, res) => {
         timeRange: item._id.timeRange,
         users: item.userCount,
       }));
+    } else if (dateRange === "yesterday") {
+      // Fetch all records from yesterday if no specific time-range data exists
+      const fallbackData = await Docxanalytics.find({
+        pdfId: pdfIdFromUrl,
+        createdAt: {
+          $gte: moment().utc().subtract(1, "days").startOf("day").toDate(),
+          $lt: moment().utc().subtract(1, "days").endOf("day").toDate(),
+        },
+      });
+
+      response = fallbackData.map((record) => ({
+        date: moment(record.createdAt).format("YYYY-MM-DD"),
+        timeRange: "00:00-24:00",
+        users: 1, // Assuming each record represents one user visit
+      }));
+
+      if (response.length === 0) {
+        response = [
+          {
+            date: moment().utc().subtract(1, "days").format("YYYY-MM-DD"),
+            timeRange: "00:00-12:00",
+            users: 0,
+          },
+          {
+            date: moment().utc().subtract(1, "days").format("YYYY-MM-DD"),
+            timeRange: "12:00-24:00",
+            users: 0,
+          },
+        ];
+      }
     } else {
-      // If no data, return today's date with 0 users
+      // Default response when no data is found
       response = [
         {
-          date: moment().format("YYYY-MM-DD"),
+          date: moment().utc().format("YYYY-MM-DD"),
           timeRange: "00:00-12:00",
           users: 0,
         },
         {
-          date: moment().format("YYYY-MM-DD"),
+          date: moment().utc().format("YYYY-MM-DD"),
           timeRange: "12:00-24:00",
           users: 0,
         },
@@ -992,7 +1022,6 @@ const getUserActivitiesByDocxId = async (req, res) => {
     });
   }
 };
-
 
 const getUserActivitiesByWebId = async (req, res) => {
   try {
