@@ -1657,128 +1657,94 @@ const getDeviceAnalyticsdocx = async (req, res) => {
   }
 };
 
-const getVideoAnalytics = async (req, res) => {
-  try {
-    const { url } = req.body;
-    console.log(req.body, "Request Body");
 
-    // Extract the video ID from the URL
-    const videoId = url.split('/').pop();
-    console.log(videoId, "Video ID");
+  const getVideoAnalytics = async (req, res) => {
+    try {
+      const { url } = req.body;
+      console.log(req.body, "Request Body");
 
-    // Fetch all analytics data for the given videoId
-    const videoAnalytics = await VideoAnalytics.find({ videoId });
-    console.log(videoAnalytics, "Video Analytics Data");
+      // Extract the video ID from the URL
+      const videoId = url.split('/').pop();
+      console.log(videoId, "Video ID");
 
-    // If no video analytics data is found, return a response with dummy data
-    if (!videoAnalytics || videoAnalytics.length === 0) {
-      console.log("No video analytics found, returning dummy data.");
-      
-      const dummyData = {
-        totalTimeSpent: 0,
-        playCount: 0,
-        pauseCount: 0,
-        seekCount: 0,
-        averageWatchTime: 0,
+      // Fetch all analytics data for the given videoId
+      const videoAnalytics = await VideoAnalytics.find({ videoId });
+      console.log(videoAnalytics, "Video Analytics Data");
+
+      // If no video analytics data is found, return a response with dummy data
+      if (!videoAnalytics || videoAnalytics.length === 0) {
+        console.log("No video analytics found, returning dummy data.");
+        return res.json({
+          totalTimeSpent: 0,
+          playCount: 0,
+          pauseCount: 0,
+          seekCount: 0,
+          averageWatchTime: 0,
+          userCounts: { newuser: { video: 0 }, returneduser: { video: 0 } },
+          totalsession: 0,
+          bounceRate: 0,
+        });
+      }
+
+      // Compute analytics metrics
+      let totalWatchTime = 0,
+        playCount = 0,
+        pauseCount = 0,
+        seekCount = 0,
+        totalSessions = videoAnalytics.length,
+        bounceSessions = 0;
+
+      videoAnalytics.forEach((video) => {
+        totalWatchTime += video.totalWatchTime;
+        playCount += video.playCount;
+        pauseCount += video.pauseCount;
+        seekCount += video.seekCount;
+
+        if (video.playCount === 1 && video.totalWatchTime  > 10) {
+          bounceSessions++;
+        }
+      });
+
+      let averageWatchTime = totalSessions > 0 ? totalWatchTime / totalSessions : 0;
+      let bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
+
+      console.log({ averageWatchTime, bounceRate }, "Computed Metrics");
+
+      // Fetch New Users Count (using videoId instead of userId)
+      const newUsers = await newUser.find({ documentId: videoId, "count.video": { $gt: 0 } });
+      let newUserVideoCount = newUsers.reduce((sum, user) => sum + user.count.video, 0);
+
+      // Fetch Returned Users Count (using videoId instead of userId)
+      const returnedUsers = await ReturnedUser.find({ documentId: videoId, "count.video": { $gt: 0 } });
+      let returnedUserVideoCount = returnedUsers.reduce((sum, user) => sum + user.count.video, 0);
+
+      console.log("User Counts:", { newUserVideoCount, returnedUserVideoCount });
+
+      // Prepare response
+      const responseData = {
+        totalTimeSpent: totalWatchTime,
+        playCount,
+        pauseCount,
+        seekCount,
+        averageWatchTime,
         userCounts: {
-          newuser: { video: 0 },
-          returneduser: { video: 0 },
+          newuser: { video: newUserVideoCount },
+          returneduser: { video: returnedUserVideoCount },
         },
-        totalsession: 0,
-        bounceRate: 0,
+        totalsession: totalSessions,
+        bounceRate,
       };
 
-      return res.json(dummyData);
+      console.log(responseData, "Response Data");
+      res.json(responseData);
+    } catch (error) {
+      console.error("Error processing video metrics:", error);
+      res.status(500).json({
+        message: "An error occurred while processing the video metrics",
+        error: error.message,
+      });
     }
-
-    let totalWatchTime = 0;
-    let playCount = 0;
-    let pauseCount = 0;
-    let seekCount = 0;
-    let totalSessions = 0;
-    let bounceSessions = 0;
-    let userIds = new Set();
-
-    // Process video analytics data
-    videoAnalytics.forEach((video) => {
-      totalWatchTime += video.totalWatchTime;
-      playCount += video.playCount;
-      pauseCount += video.pauseCount;
-      seekCount += video.seekCount;
-      totalSessions++;
-
-      if (video.userVisit) {
-        userIds.add(video.userVisit); // Store unique user IDs
-      }
-
-      if (video.playCount === 1 && video.totalWatchTime < 5) {
-        bounceSessions++;
-      }
-    });
-
-    let averageWatchTime = totalSessions > 0 ? totalWatchTime / totalSessions : 0;
-    console.log(averageWatchTime, "Average Watch Time");
-
-    // Convert userIds Set to an array
-    const userIdArray = [...userIds];
-    console.log(userIdArray, "User ID Array");
-
-    // Fetch all user visits for the identified users
-    const userVisits = await UserVisit.find({ _id: { $in: userIdArray } });
-    const visitedUserIds = userVisits.map(user => user.userId);
-    console.log(userVisits, visitedUserIds, "User Visits and IDs");
-
-    // Find New Users: Users present in UserVisit and exist in NewUser collection with count.video > 0
-    const newUsers = await newUser.find({
-      userId: { $in: visitedUserIds },
-      "count.video": { $gt: 0 }
-    });
-
-    // Find Returned Users: Users present in UserVisit and exist in ReturnedUser collection with count.video > 0
-    const returnedUsers = await ReturnedUser.find({
-      userId: { $in: visitedUserIds },
-      "count.video": { $gt: 0 }
-    });
-
-    console.log(newUsers, returnedUsers, "New Users and Returned Users");
-
-    // Calculate video count for new and returned users
-    const newUserVideoCount = newUsers.reduce((acc, user) => acc + user.count.video, 0);
-    const returnedUserVideoCount = returnedUsers.reduce((acc, user) => acc + user.count.video, 0);
-
-    console.log("New User Video Count:", newUserVideoCount);
-    console.log("Returned User Video Count:", returnedUserVideoCount);
-
-    // Bounce Rate Calculation
-    const bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
-    console.log("Bounce Rate:", bounceRate);
-
-    // Prepare Response Data
-    const responseData = {
-      totalTimeSpent: totalWatchTime,
-      playCount,
-      pauseCount,
-      seekCount,
-      averageWatchTime,
-      userCounts: {
-        newuser: { video: newUserVideoCount },
-        returneduser: { video: returnedUserVideoCount },
-      },
-      totalsession: totalSessions,
-      bounceRate,
-    };
-
-    console.log(responseData, "Response Data");
-    res.json(responseData);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      message: 'An error occurred while processing the video metrics',
-      error: error.message,
-    });
-  }
-};
-
+  };
 
 
 
