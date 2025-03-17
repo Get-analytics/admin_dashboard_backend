@@ -1,55 +1,49 @@
 require("dotenv").config();
-require('express-async-errors');
+require("express-async-errors");
 
-const connectDB = require("./db/connect");
 const express = require("express");
-const cors = require('cors')
-const app = express();
+const cors = require("cors");
+const connectDB = require("./db/connect");
 const mainRouter = require("./routes/user");
 
-app.use(express.json());
+const app = express();
 
-
-
-
-// Middleware
+// ✅ Correct CORS configuration
 const corsOptions = {
     origin: ['https://filescencedashboard.vercel.app', 'http://localhost:3000', 'http://localhost:3001'],
     credentials: true,
+    methods: 'GET,HEAD,OPTIONS,POST,PUT,DELETE',
+    allowedHeaders: 'Origin, X-Requested-With, Content-Type, Accept, Authorization, csrf-token'
 };
+
+// Enable CORS
 app.use(cors(corsOptions));
 
+// ✅ Handle Preflight Requests (for CORS)
+app.options('*', cors(corsOptions));
 
-app.use((req, res, next) => {
-    const allowedOrigins = ['https://filescencedashboard.vercel.app', 'http://localhost:3000',  'http://localhost:3001'];
-    const origin = req.headers.origin;
-    if (allowedOrigins.includes(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
-    }
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS,POST,PUT,DELETE');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, csrf-token');
-    next();
+// Middleware for parsing JSON requests
+app.use(express.json());
+
+// Root endpoint
+app.get("/", (req, res) => {
+    res.send("Welcome to the API root endpoint of the admin dashboard.");
 });
-app.get('/', (req, res) => {
-    res.send('Welcome to the API root endpoint admin dashboard api file scence');
-});
+
+// API routes
 app.use("/api/v1", mainRouter);
 
 const port = process.env.PORT || 3000;
 
 const start = async () => {
-
-    try {        
+    try {
         await connectDB(process.env.MONGO_URI);
         app.listen(port, () => {
-            console.log(`Server is listening on port ${port}`);
-        })
-
+            console.log(`🚀 Server is running on port ${port}`);
+        });
     } catch (error) {
-       console.log(error); 
+        console.error("❌ Error starting server:", error);
     }
-}
+};
 
 start();
-
