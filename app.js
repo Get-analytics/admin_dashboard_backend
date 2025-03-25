@@ -10,7 +10,7 @@ const app = express();
 
 // ✅ Correct CORS configuration
 const corsOptions = {
-    origin: ['https://filescencedashboard.vercel.app', 'http://localhost:3000', 'http://localhost:3001', 'https://dashboard.sendnow.live'],
+    origin: ['https://filescencedashboard.vercel.app', 'http://localhost:3000', 'http://localhost:3001', 'https://dashboard.sendnow.live', 'https://admindashboard-dev.vercel.app'],
     credentials: true,
     methods: 'GET,HEAD,OPTIONS,POST,PUT,DELETE',
     allowedHeaders: 'Origin, X-Requested-With, Content-Type, Accept, Authorization, csrf-token'
