@@ -1,32 +1,35 @@
 {
   "name": "simple-login-and-register-with-json-web-token",
   "version": "1.0.0",
-  "description": "",
+  "description": "![login register mern 1](https://github.com/Kuzma02/MERN-Login-And-Register-With-JSON-Web-Token/assets/138793624/057541be-e8ab-4489-996d-117290a85c5a)",
   "main": "app.js",
   "scripts": {
-   "start": "node app.js",
+    "start": "node app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Kuzma02",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.8.1",
-    "yallist": "^4.0.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2",
+    "express": "^4.21.2",
     "express-async-errors": "^3.1.1",
+    "firebase": "^11.5.0",
+    "firebase-admin": "^13.2.0",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.30.1",
     "mongoose": "^8.0.3",
     "multer": "^1.4.5-lts.1",
     "multer-storage-cloudinary": "^4.0.0",
     "pdfjs-dist": "^4.10.38",
-    "uuid": "^11.0.5"
+    "uuid": "^11.0.5",
+    "yallist": "^4.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
-  }
+  },
+  "keywords": []
 }
