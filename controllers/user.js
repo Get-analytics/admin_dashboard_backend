@@ -1,5 +1,6 @@
-const jwt = require("jsonwebtoken");
+
 const User = require("../models/User");
+const jwt = require('jsonwebtoken');
 const Pdfanalytics = require("../models/Pdfanalytics");
 const Docxanalytics = require('../models/Docxanalytics')
 const newUser = require("../models/newUser");
@@ -14,7 +15,8 @@ const { v4: uuidv4 } = require("uuid");  // Import the UUID generator
 const moment = require("moment");
 const DocxAnalytics = require("../models/Docxanalytics");
 const Webanalytics = require('../models/Webanalytics');
-const { bucket } = require("../config/firebaseconfig");
+const { bucket } = require("../config/firebaseconfig"); 
+
 
 
 
@@ -94,6 +96,9 @@ const register = async (req, res) => {
 
 
 
+// Upload file handler
+
+// Main upload file handler
 const uploadFile = async (req, res) => {
   try {
     const { shortId, uuid } = req.body;
@@ -1684,93 +1689,187 @@ const getDeviceAnalyticsdocx = async (req, res) => {
 };
 
 
-  const getVideoAnalytics = async (req, res) => {
-    try {
-      const { url } = req.body;
-      console.log(req.body, "Request Body");
+const getVideoAnalytics = async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ message: "URL is required." });
 
-      // Extract the video ID from the URL
-      const videoId = url.split('/').pop();
-      console.log(videoId, "Video ID");
+    // Extract videoId from URL
+    const videoId = url.split("/").pop();
+    if (!videoId)
+      return res.status(400).json({ message: "Video ID is required." });
 
-      // Fetch all analytics data for the given videoId
-      const videoAnalytics = await VideoAnalytics.find({ videoId });
-      console.log(videoAnalytics, "Video Analytics Data");
-
-      // If no video analytics data is found, return a response with dummy data
-      if (!videoAnalytics || videoAnalytics.length === 0) {
-        console.log("No video analytics found, returning dummy data.");
-        return res.json({
-          totalTimeSpent: 0,
-          playCount: 0,
-          pauseCount: 0,
-          seekCount: 0,
-          averageWatchTime: 0,
-          userCounts: { newuser: { video: 0 }, returneduser: { video: 0 } },
-          totalsession: 0,
-          bounceRate: 0,
-        });
-      }
-
-      // Compute analytics metrics
-      let totalWatchTime = 0,
-        playCount = 0,
-        pauseCount = 0,
-        seekCount = 0,
-        totalSessions = videoAnalytics.length,
-        bounceSessions = 0;
-
-      videoAnalytics.forEach((video) => {
-        totalWatchTime += video.totalWatchTime;
-        playCount += video.playCount;
-        pauseCount += video.pauseCount;
-        seekCount += video.seekCount;
-
-        if (video.playCount === 1 && video.totalWatchTime  > 10) {
-          bounceSessions++;
-        }
-      });
-
-      let averageWatchTime = totalSessions > 0 ? totalWatchTime / totalSessions : 0;
-      let bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
-
-      console.log({ averageWatchTime, bounceRate }, "Computed Metrics");
-
-      // Fetch New Users Count (using videoId instead of userId)
-      const newUsers = await newUser.find({ documentId: videoId, "count.video": { $gt: 0 } });
-      let newUserVideoCount = newUsers.reduce((sum, user) => sum + user.count.video, 0);
-
-      // Fetch Returned Users Count (using videoId instead of userId)
-      const returnedUsers = await ReturnedUser.find({ documentId: videoId, "count.video": { $gt: 0 } });
-      let returnedUserVideoCount = returnedUsers.reduce((sum, user) => sum + user.count.video, 0);
-
-      console.log("User Counts:", { newUserVideoCount, returnedUserVideoCount });
-
-      // Prepare response
-      const responseData = {
-        totalTimeSpent: totalWatchTime,
-        playCount,
-        pauseCount,
-        seekCount,
-        averageWatchTime,
-        userCounts: {
-          newuser: { video: newUserVideoCount },
-          returneduser: { video: returnedUserVideoCount },
-        },
-        totalsession: totalSessions,
-        bounceRate,
-      };
-
-      console.log(responseData, "Response Data");
-      res.json(responseData);
-    } catch (error) {
-      console.error("Error processing video metrics:", error);
-      res.status(500).json({
-        message: "An error occurred while processing the video metrics",
-        error: error.message,
+    // Fetch all analytics data for the given videoId
+    const videoAnalytics = await VideoAnalytics.find({ videoId });
+    // If no analytics data exists, return dummy data
+    if (!videoAnalytics || videoAnalytics.length === 0) {
+      return res.json({
+        totalTimeSpent: 0,
+        playCount: 0,
+        pauseCount: 0,
+        seekCount: 0,
+        averageWatchTime: 0,
+        userCounts: { newuser: { video: 0 }, returneduser: { video: 0 } },
+        totalsession: 0,
+        bounceRate: 0,
+        durationAnalytics: [],
       });
     }
-  };
+
+    // ============================
+    // Part 1: Overall Video Metrics
+    // ============================
+    let totalWatchTime = 0,
+      playCount = 0,
+      pauseCount = 0,
+      seekCount = 0,
+      totalSessions = videoAnalytics.length,
+      bounceSessions = 0;
+
+    videoAnalytics.forEach((video) => {
+      totalWatchTime += video.totalWatchTime;
+      playCount += video.playCount;
+      pauseCount += video.pauseCount;
+      seekCount += video.seekCount;
+      // Bounce session logic: Adjust as needed
+      if (video.playCount === 1 && video.totalWatchTime > 10) {
+        bounceSessions++;
+      }
+    });
+
+    let averageWatchTime = totalSessions > 0 ? totalWatchTime / totalSessions : 0;
+    let bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
+
+    // Fetch user counts (new and returned) using videoId
+    const newUsers = await newUser.find({ documentId: videoId, "count.video": { $gt: 0 } });
+    let newUserVideoCount = newUsers.reduce((sum, user) => sum + user.count.video, 0);
+    
+    const returnedUsers = await ReturnedUser.find({ documentId: videoId, "count.video": { $gt: 0 } });
+    let returnedUserVideoCount = returnedUsers.reduce((sum, user) => sum + user.count.video, 0);
+
+    // ============================
+    // Part 2: Duration Range Analytics
+    // ============================
+    // Initialize a mapping to store views and unique users for each duration range
+    let durationViewsMap = {};
+
+    videoAnalytics.forEach((data) => {
+      // Process skip events (forward/backward)
+      data.skipEvents.forEach((event) => {
+        const from = Math.round(event.from);
+        const to = Math.round(event.to);
+        const start = Math.min(from, to);
+        const end = Math.max(from, to);
+        if (start === end) return; // ignore single point ranges
+
+        const durationRange = `${start} to ${end}`;
+        if (!durationViewsMap[durationRange]) {
+          durationViewsMap[durationRange] = { views: 0, users: new Set() };
+        }
+        durationViewsMap[durationRange].views += 1;
+        durationViewsMap[durationRange].users.add(data.userVisit.toString());
+      });
+
+      // Process jump events (e.g., replays)
+      data.jumpEvents.forEach((event) => {
+        const from = Math.round(event.from);
+        const to = Math.round(event.to);
+        const start = Math.min(from, to);
+        const end = Math.max(from, to);
+        if (start === end) return;
+
+        const jumpRange = `${start} to ${end}`;
+        if (!durationViewsMap[jumpRange]) {
+          durationViewsMap[jumpRange] = { views: 0, users: new Set() };
+        }
+        durationViewsMap[jumpRange].views += 1;
+        durationViewsMap[jumpRange].users.add(data.userVisit.toString());
+      });
+    });
+
+    // Prepare a list from the mapping
+    const finalDurationList = Object.keys(durationViewsMap).map((range) => {
+      const segment = durationViewsMap[range];
+      return {
+        durationRange: range,
+        views: segment.views,
+        usersCount: segment.users.size,
+      };
+    });
+
+    // Merge similar (overlapping or adjacent) ranges
+    let mergedDurationList = [];
+    finalDurationList.forEach((item) => {
+      let found = false;
+      mergedDurationList = mergedDurationList.map((existingItem) => {
+        const [existingStart, existingEnd] = existingItem.durationRange
+          .split(" to ")
+          .map(Number);
+        const [newStart, newEnd] = item.durationRange.split(" to ").map(Number);
+
+        // If ranges are overlapping or adjacent, merge them
+        if (
+          (existingStart <= newStart && existingEnd >= newStart) ||
+          (existingStart <= newEnd && existingEnd >= newEnd)
+        ) {
+          existingItem.views += item.views;
+          existingItem.usersCount += item.usersCount;
+          found = true;
+        }
+        return existingItem;
+      });
+      if (!found) {
+        mergedDurationList.push({ ...item });
+      }
+    });
+
+    // Sort by views (ascending) and then by usersCount (descending)
+    mergedDurationList.sort((a, b) => {
+      if (a.views === b.views) {
+        return b.usersCount - a.usersCount;
+      }
+      return a.views - b.views;
+    });
+
+    // Filter out any ranges with less than 1 view (if necessary)
+    const filteredDurationList = mergedDurationList.filter((item) => item.views >= 1);
+
+    // ============================
+    // Part 3: Prepare Final Response
+    // ============================
+    // Fetch the original URL for the video using the shortened URL model
+    const shortenedUrl = await ShortenedUrl.findOne({ shortId: videoId });
+    if (!shortenedUrl) {
+      return res
+        .status(404)
+        .json({ message: "No original URL found for this video ID" });
+    }
+
+    const responseData = {
+      totalTimeSpent: totalWatchTime,
+      playCount,
+      pauseCount,
+      seekCount,
+      averageWatchTime,
+      userCounts: {
+        newuser: { video: newUserVideoCount },
+        returneduser: { video: returnedUserVideoCount },
+      },
+      totalsession: totalSessions,
+      bounceRate,
+      durationAnalytics: filteredDurationList, // merged & sorted duration ranges
+      Videosourceurl: shortenedUrl.originalUrl,
+    };
+
+    return res.json(responseData);
+  } catch (error) {
+    console.error("Error processing video metrics:", error);
+    return res.status(500).json({
+      message: "An error occurred while processing the video metrics",
+      error: error.message,
+    });
+  }
+};
 
 
 
@@ -2533,10 +2632,12 @@ const getDocxiewanalytics = async (req, res) => {
 
 
 const getVideoViewAnalytics = async (req, res) => {
-  const { url } = req.body;
+  const { url , uuid} = req.body;
   if (!url) return res.status(400).json({ message: "URL is required." });
+  console.log(req.body)
 
   const videoId = url.split("/").pop(); // Extract videoId from URL
+  console.log(videoId)
 
   try {
     // Step 1: Fetch all video analytics documents for a given video ID
