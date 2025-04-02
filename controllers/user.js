@@ -14,6 +14,7 @@ const { v4: uuidv4 } = require("uuid");  // Import the UUID generator
 const moment = require("moment");
 const DocxAnalytics = require("../models/Docxanalytics");
 const Webanalytics = require('../models/Webanalytics');
+const { bucket } = require("../config/firebaseconfig");
 
 
 
@@ -119,174 +120,198 @@ const uploadFile = async (req, res) => {
       return res.status(400).json({ message: "Unsupported file type" });
     }
 
-    const result = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "raw",
-        folder: "uploads",
-        public_id: req.file.originalname.split(".")[0],
-      },
-      async (error, cloudinaryResult) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          return res
-            .status(500)
-            .json({ message: "Cloudinary upload failed", error });
-        }
+    // If the file is a video, upload to Firebase Storage
+    if (req.file.mimetype.startsWith("video/")) {
+      const fileName = `videos/${req.file.originalname}`;
+      const fileRef = bucket.file(fileName);
+      const stream = fileRef.createWriteStream({
+        metadata: { contentType: req.file.mimetype },
+        resumable: false, // Quick upload, not resumable
+      });
 
-        // If file is DOCX/DOC, convert it to PDF using ConvertAPI
-        if (
-          req.file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-          req.file.mimetype === "application/msword"
-        ) {
-          try {
-            const base64File = req.file.buffer.toString("base64");
-            const apiResponse = await axios.post(
-              "https://v2.convertapi.com/convert/docx/to/pdf",
-              {
-                Parameters: [
-                  {
-                    Name: "File",
-                    FileValue: {
-                      Name: req.file.originalname,
-                      Data: base64File,
-                    },
-                  },
-                  {
-                    Name: "StoreFile",
-                    Value: true,
-                  },
-                ],
-              },
-              {
-                headers: {
-                  Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`, // Replace with your actual API key
-                  "Content-Type": "application/json",
-                },
-              }
-            );
+      stream.on("error", (err) => {
+        console.error("Firebase Upload Error:", err);
+        return res.status(500).json({ message: "Upload failed", error: err.message });
+      });
 
-            if (apiResponse.data.Files && apiResponse.data.Files[0]) {
-              const pdfUrl = apiResponse.data.Files[0].Url;
+      stream.on("finish", async () => {
+        await fileRef.makePublic();
+        const videoUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
 
-              // Fetch the PDF file from the URL
-              const pdfBuffer = await axios.get(pdfUrl, { responseType: "arraybuffer" });
+        const newShortenedUrl = new ShortenedUrl({
+          shortId,
+          fileName: req.file.originalname,
+          mimeType: req.file.mimetype,
+          originalUrl: videoUrl,
+          userUuid: uuid,
+        });
 
-              // Upload the PDF to Cloudinary
-              const uploadResult = cloudinary.uploader.upload_stream(
+        await newShortenedUrl.save();
+        return res.status(200).json({
+          message: "Video uploaded successfully",
+          file: { url: videoUrl, mimeType: req.file.mimetype },
+          shortId,
+          originalUrl: videoUrl,
+        });
+      });
+
+      stream.end(req.file.buffer);
+    } else {
+      // For non-video files, upload to Cloudinary
+      const result = cloudinary.uploader.upload_stream(
+        {
+          resource_type: "raw",
+          folder: "uploads",
+          public_id: req.file.originalname.split(".")[0],
+        },
+        async (error, cloudinaryResult) => {
+          if (error) {
+            console.error("Cloudinary Upload Error:", error);
+            return res.status(500).json({ message: "Cloudinary upload failed", error });
+          }
+
+          // For DOCX/DOC files, convert to PDF using ConvertAPI
+          if (
+            req.file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+            req.file.mimetype === "application/msword"
+          ) {
+            try {
+              const base64File = req.file.buffer.toString("base64");
+              const apiResponse = await axios.post(
+                "https://v2.convertapi.com/convert/docx/to/pdf",
                 {
-                  resource_type: "raw",
-                  folder: "uploads",
-                  public_id: `${req.file.originalname.split(".")[0]}_converted`,
-                  format: "pdf",
-                },
-                async (uploadError, uploadedPdfResult) => {
-                  if (uploadError) {
-                    console.error("Cloudinary upload error:", uploadError);
-                    return res.status(500).json({
-                      message: "Error uploading converted PDF to Cloudinary",
-                      error: uploadError,
-                    });
-                  }
-
-                  // After successfully uploading the PDF, fetch the total page count
-                  const totalPages = await getTotalPages(uploadedPdfResult.secure_url);
-
-                  const newShortenedUrl = new ShortenedUrl({
-                    shortId,
-                    fileName: req.file.originalname, // store the file name
-                    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    originalUrl: uploadedPdfResult.secure_url,
-                    userUuid: uuid,
-                    totalPages: totalPages,
-                  });
-
-                  await newShortenedUrl.save();
-
-                  return res.status(200).json({
-                    message: "File uploaded and converted to PDF successfully",
-                    file: {
-                      public_id: uploadedPdfResult.public_id,
-                      url: uploadedPdfResult.secure_url,
-                      mimeType: "application/pdf",
-                      totalPages: totalPages,
+                  Parameters: [
+                    {
+                      Name: "File",
+                      FileValue: {
+                        Name: req.file.originalname,
+                        Data: base64File,
+                      },
                     },
-                    shortId,
-                    originalUrl: uploadedPdfResult.secure_url,
-                  });
+                    { Name: "StoreFile", Value: true },
+                  ],
+                },
+                {
+                  headers: {
+                    Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`, // Replace with your actual API key
+                    "Content-Type": "application/json",
+                  },
                 }
               );
 
-              uploadResult.end(pdfBuffer.data); // Upload the PDF buffer to Cloudinary
-            } else {
-              return res.status(500).json({ message: "Failed to convert DOCX to PDF" });
-            }
-          } catch (conversionError) {
-            console.error("Conversion API error:", conversionError);
-            return res.status(500).json({
-              message: "Error converting DOCX to PDF",
-              error: conversionError.message,
-            });
-          }
-        } else if (req.file.mimetype === "application/pdf") {
-          try {
-            // Use pdf.js to get the total page count for the PDF
-            const totalPages = await getTotalPages(cloudinaryResult.secure_url);
+              if (apiResponse.data.Files && apiResponse.data.Files[0]) {
+                const pdfUrl = apiResponse.data.Files[0].Url;
+                const pdfBuffer = await axios.get(pdfUrl, { responseType: "arraybuffer" });
 
+                const uploadResult = cloudinary.uploader.upload_stream(
+                  {
+                    resource_type: "raw",
+                    folder: "uploads",
+                    public_id: `${req.file.originalname.split(".")[0]}_converted`,
+                    format: "pdf",
+                  },
+                  async (uploadError, uploadedPdfResult) => {
+                    if (uploadError) {
+                      console.error("Cloudinary PDF Upload Error:", uploadError);
+                      return res.status(500).json({
+                        message: "Error uploading converted PDF to Cloudinary",
+                        error: uploadError,
+                      });
+                    }
+                    const totalPages = await getTotalPages(uploadedPdfResult.secure_url);
+
+                    const newShortenedUrl = new ShortenedUrl({
+                      shortId,
+                      fileName: req.file.originalname,
+                      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                      originalUrl: uploadedPdfResult.secure_url,
+                      userUuid: uuid,
+                      totalPages,
+                    });
+
+                    await newShortenedUrl.save();
+
+                    return res.status(200).json({
+                      message: "File uploaded and converted to PDF successfully",
+                      file: {
+                        public_id: uploadedPdfResult.public_id,
+                        url: uploadedPdfResult.secure_url,
+                        mimeType: "application/pdf",
+                        totalPages,
+                      },
+                      shortId,
+                      originalUrl: uploadedPdfResult.secure_url,
+                    });
+                  }
+                );
+
+                uploadResult.end(pdfBuffer.data);
+              } else {
+                return res.status(500).json({ message: "Failed to convert DOCX to PDF" });
+              }
+            } catch (conversionError) {
+              console.error("Conversion API Error:", conversionError);
+              return res.status(500).json({
+                message: "Error converting DOCX to PDF",
+                error: conversionError.message,
+              });
+            }
+          } else if (req.file.mimetype === "application/pdf") {
+            try {
+              const totalPages = await getTotalPages(cloudinaryResult.secure_url);
+              const newShortenedUrl = new ShortenedUrl({
+                shortId,
+                fileName: req.file.originalname,
+                mimeType: req.file.mimetype,
+                originalUrl: cloudinaryResult.secure_url,
+                userUuid: uuid,
+                totalPages,
+              });
+              await newShortenedUrl.save();
+
+              return res.status(200).json({
+                message: "File uploaded successfully",
+                file: {
+                  public_id: cloudinaryResult.public_id,
+                  url: cloudinaryResult.secure_url,
+                  mimeType: req.file.mimetype,
+                  totalPages,
+                },
+                shortId,
+                originalUrl: cloudinaryResult.secure_url,
+              });
+            } catch (error) {
+              console.error("Error reading PDF with pdf.js:", error);
+              return res.status(500).json({
+                message: "Error reading PDF with pdf.js",
+                error: error.message,
+              });
+            }
+          } else {
+            // For other file types that do not require conversion
             const newShortenedUrl = new ShortenedUrl({
               shortId,
-              fileName: req.file.originalname, // store the file name
+              fileName: req.file.originalname,
               mimeType: req.file.mimetype,
               originalUrl: cloudinaryResult.secure_url,
               userUuid: uuid,
-              totalPages: totalPages,
             });
-
             await newShortenedUrl.save();
-
             return res.status(200).json({
               message: "File uploaded successfully",
               file: {
                 public_id: cloudinaryResult.public_id,
                 url: cloudinaryResult.secure_url,
                 mimeType: req.file.mimetype,
-                totalPages: totalPages,
               },
               shortId,
               originalUrl: cloudinaryResult.secure_url,
             });
-          } catch (error) {
-            console.error("Error reading PDF with pdf.js:", error);
-            return res.status(500).json({
-              message: "Error reading PDF with pdf.js",
-              error: error.message,
-            });
           }
-        } else {
-          // For files that do not need conversion
-          const newShortenedUrl = new ShortenedUrl({
-            shortId,
-            fileName: req.file.originalname, // store the file name
-            mimeType: req.file.mimetype,
-            originalUrl: cloudinaryResult.secure_url,
-            userUuid: uuid,
-          });
-
-          await newShortenedUrl.save();
-
-          return res.status(200).json({
-            message: "File uploaded successfully",
-            file: {
-              public_id: cloudinaryResult.public_id,
-              url: cloudinaryResult.secure_url,
-              mimeType: req.file.mimetype,
-            },
-            shortId,
-            originalUrl: cloudinaryResult.secure_url,
-          });
         }
-      }
-    );
-    result.end(req.file.buffer);
+      );
+      result.end(req.file.buffer);
+    }
   } catch (error) {
     console.error("Error during file upload:", error);
     res.status(500).json({
@@ -295,6 +320,7 @@ const uploadFile = async (req, res) => {
     });
   }
 };
+
 
 
 // Function to get total pages using pdf.js
