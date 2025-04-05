@@ -1853,7 +1853,7 @@ const getVideoAnalytics = async (req, res) => {
       averageWatchTime,
       userCounts: {
         newuser: { video: newUserVideoCount },
-        returneduser: { video: returnedUserVideoCount },
+        returneduser: { video: ( returnedUserVideoCount - newUserVideoCount ) },
       },
       totalsession: totalSessions,
       bounceRate,
