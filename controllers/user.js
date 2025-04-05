@@ -2874,7 +2874,7 @@ const Web_analytics = async (req, res) => {
       averageTimeSpent,
       userCounts: {
         newuser: { [normalizedCategory]: newUserCategoryCount },
-        returneduser: { [normalizedCategory]: returnedUserCategoryCount },
+        returneduser: { [normalizedCategory]: ( returnedUserCategoryCount - newUserCategoryCount) },
       },
       mostVisitedPage,
       totalsession: totalSessions,
