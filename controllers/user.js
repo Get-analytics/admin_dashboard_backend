@@ -16,6 +16,7 @@ const moment = require("moment");
 const DocxAnalytics = require("../models/Docxanalytics");
 const Webanalytics = require('../models/Webanalytics');
 const { bucket } = require("../config/firebaseconfig"); 
+const AWS = require("aws-sdk");
 
 
 
@@ -98,7 +99,14 @@ const register = async (req, res) => {
 
 // Upload file handler
 
-// Main upload file handler
+
+// Configure AWS S3 client
+const s3 = new AWS.S3({
+  accessKeyId: process.env.AWS_ACCESS_KEY || "AKIAYH6W6IWI5H4ORYLC",
+  secretAccessKey: process.env.AWS_SECRET_KEY || "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",
+  region: process.env.AWS_REGION || "eu-north-1",
+});
+
 const uploadFile = async (req, res) => {
   try {
     const { shortId, uuid } = req.body;
@@ -109,6 +117,7 @@ const uploadFile = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
+    // Allowed MIME types
     const allowedMimeTypes = [
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX
@@ -125,219 +134,204 @@ const uploadFile = async (req, res) => {
       return res.status(400).json({ message: "Unsupported file type" });
     }
 
-    // If the file is a video, upload to Firebase Storage
+    // Determine folder based on file type
+    let folder = "files/";
     if (req.file.mimetype.startsWith("video/")) {
-      const fileName = `videos/${req.file.originalname}`;
-      const fileRef = bucket.file(fileName);
-      const stream = fileRef.createWriteStream({
-        metadata: { contentType: req.file.mimetype },
-        resumable: false, // Quick upload, not resumable
+      folder = "videos/";
+    }
+
+    // === Branch 1: Video Files ===
+    if (req.file.mimetype.startsWith("video/")) {
+      const fileName = `${folder}${req.file.originalname}`;
+      const params = {
+        Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
+        Key: fileName,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      };
+
+      const uploadResult = await s3.upload(params).promise();
+      const videoUrl = uploadResult.Location;
+      console.log("Video uploaded to S3:", videoUrl);
+
+      const newShortenedUrl = new ShortenedUrl({
+        shortId,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        originalUrl: videoUrl,
+        userUuid: uuid,
       });
+      await newShortenedUrl.save();
 
-      stream.on("error", (err) => {
-        console.error("Firebase Upload Error:", err);
-        return res.status(500).json({ message: "Upload failed", error: err.message });
+      return res.status(200).json({
+        message: "Video uploaded successfully",
+        file: { url: videoUrl, mimeType: req.file.mimetype },
+        shortId,
+        originalUrl: videoUrl,
       });
-
-      stream.on("finish", async () => {
-        await fileRef.makePublic();
-        const videoUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-
-        const newShortenedUrl = new ShortenedUrl({
-          shortId,
-          fileName: req.file.originalname,
-          mimeType: req.file.mimetype,
-          originalUrl: videoUrl,
-          userUuid: uuid,
-        });
-
-        await newShortenedUrl.save();
-        return res.status(200).json({
-          message: "Video uploaded successfully",
-          file: { url: videoUrl, mimeType: req.file.mimetype },
-          shortId,
-          originalUrl: videoUrl,
-        });
-      });
-
-      stream.end(req.file.buffer);
-    } else {
-      // For non-video files, upload to Cloudinary
-      const result = cloudinary.uploader.upload_stream(
-        {
-          resource_type: "raw",
-          folder: "uploads",
-          public_id: req.file.originalname.split(".")[0],
-        },
-        async (error, cloudinaryResult) => {
-          if (error) {
-            console.error("Cloudinary Upload Error:", error);
-            return res.status(500).json({ message: "Cloudinary upload failed", error });
-          }
-
-          // For DOCX/DOC files, convert to PDF using ConvertAPI
-          if (
-            req.file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-            req.file.mimetype === "application/msword"
-          ) {
-            try {
-              const base64File = req.file.buffer.toString("base64");
-              const apiResponse = await axios.post(
-                "https://v2.convertapi.com/convert/docx/to/pdf",
-                {
-                  Parameters: [
-                    {
-                      Name: "File",
-                      FileValue: {
-                        Name: req.file.originalname,
-                        Data: base64File,
-                      },
-                    },
-                    { Name: "StoreFile", Value: true },
-                  ],
+    }
+    // === Branch 2: DOCX/DOC Files (Convert to PDF) ===
+    else if (
+      req.file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      req.file.mimetype === "application/msword"
+    ) {
+      try {
+        // Convert DOCX/DOC to PDF using ConvertAPI
+        const base64File = req.file.buffer.toString("base64");
+        const apiResponse = await axios.post(
+          "https://v2.convertapi.com/convert/docx/to/pdf",
+          {
+            Parameters: [
+              {
+                Name: "File",
+                FileValue: {
+                  Name: req.file.originalname,
+                  Data: base64File,
                 },
-                {
-                  headers: {
-                    Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`, // Replace with your actual API key
-                    "Content-Type": "application/json",
-                  },
-                }
-              );
-
-              if (apiResponse.data.Files && apiResponse.data.Files[0]) {
-                const pdfUrl = apiResponse.data.Files[0].Url;
-                const pdfBuffer = await axios.get(pdfUrl, { responseType: "arraybuffer" });
-
-                const uploadResult = cloudinary.uploader.upload_stream(
-                  {
-                    resource_type: "raw",
-                    folder: "uploads",
-                    public_id: `${req.file.originalname.split(".")[0]}_converted`,
-                    format: "pdf",
-                  },
-                  async (uploadError, uploadedPdfResult) => {
-                    if (uploadError) {
-                      console.error("Cloudinary PDF Upload Error:", uploadError);
-                      return res.status(500).json({
-                        message: "Error uploading converted PDF to Cloudinary",
-                        error: uploadError,
-                      });
-                    }
-                    const totalPages = await getTotalPages(uploadedPdfResult.secure_url);
-
-                    const newShortenedUrl = new ShortenedUrl({
-                      shortId,
-                      fileName: req.file.originalname,
-                      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                      originalUrl: uploadedPdfResult.secure_url,
-                      userUuid: uuid,
-                      totalPages,
-                    });
-
-                    await newShortenedUrl.save();
-
-                    return res.status(200).json({
-                      message: "File uploaded and converted to PDF successfully",
-                      file: {
-                        public_id: uploadedPdfResult.public_id,
-                        url: uploadedPdfResult.secure_url,
-                        mimeType: "application/pdf",
-                        totalPages,
-                      },
-                      shortId,
-                      originalUrl: uploadedPdfResult.secure_url,
-                    });
-                  }
-                );
-
-                uploadResult.end(pdfBuffer.data);
-              } else {
-                return res.status(500).json({ message: "Failed to convert DOCX to PDF" });
-              }
-            } catch (conversionError) {
-              console.error("Conversion API Error:", conversionError);
-              return res.status(500).json({
-                message: "Error converting DOCX to PDF",
-                error: conversionError.message,
-              });
-            }
-          } else if (req.file.mimetype === "application/pdf") {
-            try {
-              const totalPages = await getTotalPages(cloudinaryResult.secure_url);
-              const newShortenedUrl = new ShortenedUrl({
-                shortId,
-                fileName: req.file.originalname,
-                mimeType: req.file.mimetype,
-                originalUrl: cloudinaryResult.secure_url,
-                userUuid: uuid,
-                totalPages,
-              });
-              await newShortenedUrl.save();
-
-              return res.status(200).json({
-                message: "File uploaded successfully",
-                file: {
-                  public_id: cloudinaryResult.public_id,
-                  url: cloudinaryResult.secure_url,
-                  mimeType: req.file.mimetype,
-                  totalPages,
-                },
-                shortId,
-                originalUrl: cloudinaryResult.secure_url,
-              });
-            } catch (error) {
-              console.error("Error reading PDF with pdf.js:", error);
-              return res.status(500).json({
-                message: "Error reading PDF with pdf.js",
-                error: error.message,
-              });
-            }
-          } else {
-            // For other file types that do not require conversion
-            const newShortenedUrl = new ShortenedUrl({
-              shortId,
-              fileName: req.file.originalname,
-              mimeType: req.file.mimetype,
-              originalUrl: cloudinaryResult.secure_url,
-              userUuid: uuid,
-            });
-            await newShortenedUrl.save();
-            return res.status(200).json({
-              message: "File uploaded successfully",
-              file: {
-                public_id: cloudinaryResult.public_id,
-                url: cloudinaryResult.secure_url,
-                mimeType: req.file.mimetype,
               },
-              shortId,
-              originalUrl: cloudinaryResult.secure_url,
-            });
+              { Name: "StoreFile", Value: true },
+            ],
+          },
+          {
+            headers: {
+              Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`, // Replace with your actual API key
+              "Content-Type": "application/json",
+            },
           }
+        );
+
+        if (apiResponse.data.Files && apiResponse.data.Files[0]) {
+          const pdfUrl = apiResponse.data.Files[0].Url;
+          // Download the converted PDF
+          const pdfResponse = await axios.get(pdfUrl, { responseType: "arraybuffer" });
+          const pdfBuffer = Buffer.from(pdfResponse.data, "binary");
+
+          // Upload the converted PDF to S3
+          const pdfFileName = `files/${req.file.originalname.split(".")[0]}_converted.pdf`;
+          const params = {
+            Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
+            Key: pdfFileName,
+            Body: pdfBuffer,
+            ContentType: "application/pdf",
+            ContentDisposition: "inline", // so that PDF opens in browser
+          };
+
+          const uploadResult = await s3.upload(params).promise();
+          const uploadedPdfUrl = uploadResult.Location;
+          console.log("Converted PDF uploaded to S3:", uploadedPdfUrl);
+
+          const totalPages = await getTotalPages(uploadedPdfUrl);
+
+          const newShortenedUrl = new ShortenedUrl({
+            shortId,
+            fileName: req.file.originalname,
+            mimeType: req.file.mimetype, // original DOC/DOCX mimetype
+            originalUrl: uploadedPdfUrl,
+            userUuid: uuid,
+            totalPages,
+          });
+          await newShortenedUrl.save();
+
+          return res.status(200).json({
+            message: "File uploaded and converted to PDF successfully",
+            file: {
+              url: uploadedPdfUrl,
+              mimeType: "application/pdf",
+              totalPages,
+            },
+            shortId,
+            originalUrl: uploadedPdfUrl,
+          });
+        } else {
+          return res.status(500).json({ message: "Failed to convert DOCX to PDF" });
         }
-      );
-      result.end(req.file.buffer);
+      } catch (conversionError) {
+        console.error("Conversion API Error:", conversionError);
+        return res.status(500).json({
+          message: "Error converting DOCX to PDF",
+          error: conversionError.message,
+        });
+      }
+    }
+    // === Branch 3: PDF Files ===
+    else if (req.file.mimetype === "application/pdf") {
+      const fileName = `${folder}${req.file.originalname}`;
+      const params = {
+        Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
+        Key: fileName,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+        ContentDisposition: "inline",
+      };
+
+      const uploadResult = await s3.upload(params).promise();
+      const fileUrl = uploadResult.Location;
+      console.log("PDF uploaded to S3:", fileUrl);
+
+      const totalPages = await getTotalPages(fileUrl);
+
+      const newShortenedUrl = new ShortenedUrl({
+        shortId,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        originalUrl: fileUrl,
+        userUuid: uuid,
+        totalPages,
+      });
+      await newShortenedUrl.save();
+
+      return res.status(200).json({
+        message: "PDF uploaded successfully",
+        file: { url: fileUrl, mimeType: req.file.mimetype, totalPages },
+        shortId,
+        originalUrl: fileUrl,
+      });
+    }
+    // === Branch 4: Other File Types (e.g. Images) ===
+    else {
+      const fileName = `${folder}${req.file.originalname}`;
+      const params = {
+        Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
+        Key: fileName,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      };
+
+      const uploadResult = await s3.upload(params).promise();
+      const fileUrl = uploadResult.Location;
+      console.log("File uploaded to S3:", fileUrl);
+
+      const newShortenedUrl = new ShortenedUrl({
+        shortId,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        originalUrl: fileUrl,
+        userUuid: uuid,
+      });
+      await newShortenedUrl.save();
+
+      return res.status(200).json({
+        message: "File uploaded successfully",
+        file: { url: fileUrl, mimeType: req.file.mimetype },
+        shortId,
+        originalUrl: fileUrl,
+      });
     }
   } catch (error) {
     console.error("Error during file upload:", error);
-    res.status(500).json({
+    return res.status(500).json({
       message: "Error uploading file",
       error: error.message,
     });
   }
 };
 
-
-
 // Function to get total pages using pdf.js
 async function getTotalPages(pdfUrl) {
   try {
-    // Dynamically import pdf.js in a CommonJS environment
-    const pdfjsLib = await import('pdfjs-dist/build/pdf.mjs');
-
-    const response = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+    const pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
+    const response = await axios.get(pdfUrl, { responseType: "arraybuffer" });
     const pdfData = new Uint8Array(response.data);
-
-    // Load the PDF document
     const pdfDocument = await pdfjsLib.getDocument({ data: pdfData }).promise;
     return pdfDocument.numPages;
   } catch (error) {
