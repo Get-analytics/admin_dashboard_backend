@@ -2774,7 +2774,7 @@ const Web_analytics = async (req, res) => {
     console.log(req.body, "Request Body");
 
     // Normalize category to lowercase
-    const normalizedCategory = category.toLowerCase();
+    const normalizedCategory = "weblink";
     console.log(normalizedCategory, "Normalized Category");
 
     // Extract the webId from the URL (assuming the ID is the last segment)
