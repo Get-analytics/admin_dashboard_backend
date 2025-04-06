@@ -2793,15 +2793,11 @@ const Web_analytics = async (req, res) => {
     let totalPagesVisited = 0;
     let mostVisitedPage = '';
     let bounceSessions = 0;
-    let totalSessions = webAnalyticsData.length;
-    let userVisitIds = []; // Store userVisit ObjectIds
-    let userIds = new Set(); // Store unique userIds
 
     // Process web analytics data to calculate metrics
     webAnalyticsData.forEach((doc) => {
       totalTimeSpent += doc.totalTimeSpent;
       totalPagesVisited += doc.totalPagesVisited;
-      userVisitIds.push(doc.userVisit); // Collect userVisit IDs
 
       if (!mostVisitedPage && doc.mostVisitedPage) {
         mostVisitedPage = doc.mostVisitedPage;
@@ -2813,46 +2809,36 @@ const Web_analytics = async (req, res) => {
       }
     });
 
+    // Total sessions count
+    const totalSessions = webAnalyticsData.length;
     // Calculate average time spent per page
     let averageTimeSpent = totalPagesVisited > 0 ? totalTimeSpent / totalPagesVisited : 0;
     console.log(averageTimeSpent, "Average Time Spent");
 
     // ------------------------------
-    // Fetch userIds from UserVisit model using userVisitIds
-    const userVisits = await UserVisit.find({ _id: { $in: userVisitIds } });
-
-    console.log(userVisits, "uservisites")
-    userVisits.forEach((userVisit) => {
-      userIds.add(userVisit.userId); // Collect unique userIds
-    });
-
-    console.log(userIds, "User IDs from User Visit");
-
-    // Convert userIds Set to an array for query
-    const userIdArray = [...userIds];
-
-    console.log(userIdArray, "User IDs to use for new/returned user queries");
-
-    // ------------------------------
-    // NEW USER COUNT - Return the count of web analytics in the new user count
+    // NEW USER COUNT using documentId similar to pdf analytics
     const newUsers = await newUser.find({
-      userId: { $in: userIdArray },
-      [`count.weblink`]: { $gt: 0 },
+      documentId: webId,
+      [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Get the total count of web category for new users
-    const newUserCategoryCount = newUsers.reduce((sum, user) => sum + (user.count["weblink"] || 0), 0);
+    const newUserCategoryCount = newUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("New user count for", normalizedCategory, ":", newUserCategoryCount);
 
     // ------------------------------
-    // RETURNED USER COUNT - Return the count of web category in the returned user count
+    // RETURNED USER COUNT using documentId similar to pdf analytics
     const returnedUsers = await ReturnedUser.find({
-      userId: { $in: userIdArray },
-      [`count.weblink`]: { $gt: 0 },
+      documentId: webId,
+      [`count.${normalizedCategory}`]: { $gt: 0 },
     });
 
-    // Get the total count of web category for returned users
-    const returnedUserCategoryCount = returnedUsers.reduce((sum, user) => sum + (user.count["weblink"] || 0), 0);
+    const returnedUserCategoryCount = returnedUsers.reduce(
+      (sum, user) => sum + (user.count[normalizedCategory] || 0),
+      0
+    );
     console.log("Returned user count for", normalizedCategory, ":", returnedUserCategoryCount);
 
     // ------------------------------
@@ -2860,7 +2846,6 @@ const Web_analytics = async (req, res) => {
     const bounceRate = totalSessions > 0 ? (bounceSessions / totalSessions) * 100 : 0;
     console.log("Bounce Rate:", bounceRate);
 
-    // ------------------------------
     // Prepare the response data
     const responseData = {
       totalPagesVisited,
@@ -2868,7 +2853,7 @@ const Web_analytics = async (req, res) => {
       averageTimeSpent,
       userCounts: {
         newuser: { [normalizedCategory]: newUserCategoryCount },
-        returneduser: { [normalizedCategory]: ( returnedUserCategoryCount - newUserCategoryCount) },
+        returneduser: { [normalizedCategory]: (returnedUserCategoryCount - newUserCategoryCount) },
       },
       mostVisitedPage,
       totalsession: totalSessions,
@@ -2885,6 +2870,7 @@ const Web_analytics = async (req, res) => {
     });
   }
 };
+
 
 
 
