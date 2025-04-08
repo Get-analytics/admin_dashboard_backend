@@ -438,6 +438,7 @@ const uploadurl = async (req, res) => {
 };
 
 
+
 const dashboardData = async (req, res) => {
   try {
     const { UUID } = req.body;
@@ -456,7 +457,35 @@ const dashboardData = async (req, res) => {
       video: []
     };
 
+    // Function to calculate the expiration in human-readable format
+    const getExpirationText = (expirationDate) => {
+     
+      if (!expirationDate) {
+        return "No expiration"; // Default message if no expiration date
+      }
+
+      const now = new Date();
+      const diffMs = new Date(expirationDate) - now; // milliseconds
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffMonths = Math.floor(diffDays / 30);
+      const diffYears = Math.floor(diffDays / 365);
+
+      if (diffMs <= 0) {
+        return "Expired";
+      } else if (diffYears > 0) {
+        return `${diffYears} year`;
+      } else if (diffMonths > 0) {
+        return `${diffMonths} month`;
+      } else if (diffDays > 7) {
+        return `${Math.floor(diffDays / 7)} week`;
+      } else {
+        return `${diffDays} day`;
+      }
+    };
+
     urls.forEach((urlDoc) => {
+
+      console.log(urlDoc, "urldoc")
       // Determine the category based on the MIME type.
       let category = "";
       if (urlDoc.mimeType === "weblink") {
@@ -495,12 +524,17 @@ const dashboardData = async (req, res) => {
         timeAgo = `${Math.floor(diffSeconds / 31536000)} year(s) ago`;
       }
 
+      // Get expiration date (corrected)
+
+      const expirationText = getExpirationText(urlDoc.expirationDate);
+
       // Add the record to the appropriate group.
       groupedData[category].push({
         url: `https://view.sendnow.live/${urlDoc.shortId}`,
         fileName: urlDoc.fileName || "N/A", // Include fileName in response
         createdDate: createdDateObj.toISOString().split("T")[0], // Format as "YYYY-MM-DD"
-        timeAgo: timeAgo
+        timeAgo: timeAgo,
+        expiration: expirationText // Correct expiration value
       });
     });
 
@@ -517,6 +551,7 @@ const dashboardData = async (req, res) => {
     });
   }
 };
+
 
 const Pdf_pdfanalytics = async (req, res) => {
   try {
