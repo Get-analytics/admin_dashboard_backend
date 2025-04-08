@@ -110,54 +110,73 @@ const s3 = new AWS.S3({
 const uploadFile = async (req, res) => {
   try {
     const { shortId, uuid } = req.body;
+
     if (!shortId) {
       return res.status(400).json({ message: "Short ID is required" });
     }
+
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    // Allowed MIME types
-    const allowedMimeTypes = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // DOCX
-      "application/msword", // DOC
-      "video/mp4",
-      "video/webm",
-      "video/ogg",
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-    ];
+    const mimeType = req.file.mimetype;
+    const fileSizeInMB = req.file.size / (1024 * 1024); // Convert bytes to MB
 
-    if (!allowedMimeTypes.includes(req.file.mimetype)) {
+    // Allowed MIME types and their max file size limits (in MB)
+    const fileSizeLimits = {
+      "application/pdf": 2,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": 2,
+      "application/msword": 2,
+      "video/mp4": 30,
+      "video/webm": 30,
+      "video/ogg": 30,
+      "image/jpeg": 2,
+      "image/png": 2,
+      "image/gif": 2,
+    };
+
+    // Check if file type is allowed
+    if (!Object.keys(fileSizeLimits).includes(mimeType)) {
       return res.status(400).json({ message: "Unsupported file type" });
+    }
+
+    // Check file size limit
+    const maxAllowedSize = fileSizeLimits[mimeType];
+    if (fileSizeInMB > maxAllowedSize) {
+      return res.status(400).json({
+        message: `File size exceeds the limit. Max allowed size for ${mimeType.split("/")[1].toUpperCase()} is ${maxAllowedSize} MB.`,
+      });
     }
 
     // Determine folder based on file type
     let folder = "files/";
-    if (req.file.mimetype.startsWith("video/")) {
+    if (mimeType.startsWith("video/")) {
       folder = "videos/";
     }
 
+    // Check user upload limit
+    const existingRecordCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
+    if (existingRecordCount >= 100) {
+      return res.status(400).json({ message: "Your upload limit is finished" });
+    }
+
     // === Branch 1: Video Files ===
-    if (req.file.mimetype.startsWith("video/")) {
+    if (mimeType.startsWith("video/")) {
       const fileName = `${folder}${req.file.originalname}`;
       const params = {
         Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
         Key: fileName,
         Body: req.file.buffer,
-        ContentType: req.file.mimetype,
+        ContentType: mimeType,
       };
 
       const uploadResult = await s3.upload(params).promise();
       const videoUrl = uploadResult.Location;
-      console.log("Video uploaded to S3:", videoUrl);
 
       const newShortenedUrl = new ShortenedUrl({
         shortId,
         fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
+        mimeType,
         originalUrl: videoUrl,
         userUuid: uuid,
       });
@@ -165,18 +184,18 @@ const uploadFile = async (req, res) => {
 
       return res.status(200).json({
         message: "Video uploaded successfully",
-        file: { url: videoUrl, mimeType: req.file.mimetype },
+        file: { url: videoUrl, mimeType },
         shortId,
         originalUrl: videoUrl,
       });
     }
+
     // === Branch 2: DOCX/DOC Files (Convert to PDF) ===
     else if (
-      req.file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      req.file.mimetype === "application/msword"
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mimeType === "application/msword"
     ) {
       try {
-        // Convert DOCX/DOC to PDF using ConvertAPI
         const base64File = req.file.buffer.toString("base64");
         const apiResponse = await axios.post(
           "https://v2.convertapi.com/convert/docx/to/pdf",
@@ -194,7 +213,7 @@ const uploadFile = async (req, res) => {
           },
           {
             headers: {
-              Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`, // Replace with your actual API key
+              Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`,
               "Content-Type": "application/json",
             },
           }
@@ -202,30 +221,26 @@ const uploadFile = async (req, res) => {
 
         if (apiResponse.data.Files && apiResponse.data.Files[0]) {
           const pdfUrl = apiResponse.data.Files[0].Url;
-          // Download the converted PDF
           const pdfResponse = await axios.get(pdfUrl, { responseType: "arraybuffer" });
           const pdfBuffer = Buffer.from(pdfResponse.data, "binary");
 
-          // Upload the converted PDF to S3
           const pdfFileName = `files/${req.file.originalname.split(".")[0]}_converted.pdf`;
           const params = {
             Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
             Key: pdfFileName,
             Body: pdfBuffer,
             ContentType: "application/pdf",
-            ContentDisposition: "inline", // so that PDF opens in browser
+            ContentDisposition: "inline",
           };
 
           const uploadResult = await s3.upload(params).promise();
           const uploadedPdfUrl = uploadResult.Location;
-          console.log("Converted PDF uploaded to S3:", uploadedPdfUrl);
-
           const totalPages = await getTotalPages(uploadedPdfUrl);
 
           const newShortenedUrl = new ShortenedUrl({
             shortId,
             fileName: req.file.originalname,
-            mimeType: req.file.mimetype, // original DOC/DOCX mimetype
+            mimeType,
             originalUrl: uploadedPdfUrl,
             userUuid: uuid,
             totalPages,
@@ -246,34 +261,32 @@ const uploadFile = async (req, res) => {
           return res.status(500).json({ message: "Failed to convert DOCX to PDF" });
         }
       } catch (conversionError) {
-        console.error("Conversion API Error:", conversionError);
         return res.status(500).json({
           message: "Error converting DOCX to PDF",
           error: conversionError.message,
         });
       }
     }
+
     // === Branch 3: PDF Files ===
-    else if (req.file.mimetype === "application/pdf") {
+    else if (mimeType === "application/pdf") {
       const fileName = `${folder}${req.file.originalname}`;
       const params = {
         Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
         Key: fileName,
         Body: req.file.buffer,
-        ContentType: req.file.mimetype,
+        ContentType: mimeType,
         ContentDisposition: "inline",
       };
 
       const uploadResult = await s3.upload(params).promise();
       const fileUrl = uploadResult.Location;
-      console.log("PDF uploaded to S3:", fileUrl);
-
       const totalPages = await getTotalPages(fileUrl);
 
       const newShortenedUrl = new ShortenedUrl({
         shortId,
         fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
+        mimeType,
         originalUrl: fileUrl,
         userUuid: uuid,
         totalPages,
@@ -282,29 +295,29 @@ const uploadFile = async (req, res) => {
 
       return res.status(200).json({
         message: "PDF uploaded successfully",
-        file: { url: fileUrl, mimeType: req.file.mimetype, totalPages },
+        file: { url: fileUrl, mimeType, totalPages },
         shortId,
         originalUrl: fileUrl,
       });
     }
-    // === Branch 4: Other File Types (e.g. Images) ===
+
+    // === Branch 4: Images and Other Supported Files ===
     else {
       const fileName = `${folder}${req.file.originalname}`;
       const params = {
         Bucket: process.env.AWS_S3_BUCKET || "sendnowupload",
         Key: fileName,
         Body: req.file.buffer,
-        ContentType: req.file.mimetype,
+        ContentType: mimeType,
       };
 
       const uploadResult = await s3.upload(params).promise();
       const fileUrl = uploadResult.Location;
-      console.log("File uploaded to S3:", fileUrl);
 
       const newShortenedUrl = new ShortenedUrl({
         shortId,
         fileName: req.file.originalname,
-        mimeType: req.file.mimetype,
+        mimeType,
         originalUrl: fileUrl,
         userUuid: uuid,
       });
@@ -312,7 +325,7 @@ const uploadFile = async (req, res) => {
 
       return res.status(200).json({
         message: "File uploaded successfully",
-        file: { url: fileUrl, mimeType: req.file.mimetype },
+        file: { url: fileUrl, mimeType },
         shortId,
         originalUrl: fileUrl,
       });
@@ -412,31 +425,41 @@ const getParsedDocumentData = async (pdfUrl) => {
 const uploadurl = async (req, res) => {
   try {
     console.log(req.body, "url upload");
-    // Extract originalUrl, shortId, mimeType, and uuid from the request body
+
     const { originalUrl, shortId, mimeType, uuid } = req.body;
-    console.log(originalUrl, shortId, mimeType, uuid);
+
     if (!originalUrl || !shortId) {
       return res.status(400).json({ message: "Original URL and Short URL are required" });
     }
-    // Create and save a new shortened URL document including the user UUID
+
+    // 1. Check if user has already uploaded 3 or more links
+    const existingCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
+
+    if (existingCount >= 3) {
+      return res.status(400).json({ message: "Your upload limit is finished" });
+    }
+
+    // 2. Save the new shortened URL
     const shortenedUrl = new ShortenedUrl({
       originalUrl,
       fileName: originalUrl,
       shortId,
       mimeType: "weblink", // For URL uploads
-      userUuid: uuid,      // Save the user UUID
+      userUuid: uuid,
     });
+
     await shortenedUrl.save();
+
     res.status(200).json({
       message: "URL saved successfully",
       shortenedUrl,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error saving URL", error: error.message });
   }
 };
-
 
 
 const dashboardData = async (req, res) => {
