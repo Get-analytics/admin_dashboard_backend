@@ -5,6 +5,7 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./db/connect");
 const mainRouter = require("./routes/user");
+const cron  = require("./routes/cronRoute")
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.get("/", (req, res) => {
 
 // API routes
 app.use("/api/v1", mainRouter);
+app.use("/api/v1", cron)
 
 const port = process.env.PORT || 3000;
 
