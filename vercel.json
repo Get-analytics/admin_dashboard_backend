@@ -15,7 +15,7 @@
   "crons": [
     {
       "path": "/api/v1/cron",
-      "schedule": "31 17 * * *" 
+      "schedule": "35 16 * * *"  // Run at 10:05 PM IST (4:35 PM UTC)
     }
   ]
 }
