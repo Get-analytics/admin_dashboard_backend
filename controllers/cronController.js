@@ -2,7 +2,7 @@ const axios = require('axios');
 
 const cronInternalApi = async () => {
   try {
-    const response = await axios.get('admin-dashboard-backend-rust.vercel.app/api/v1/cronTrigger', {
+    const response = await axios.get('https://admin-dashboard-backend-rust.vercel.app/api/v1/cronTrigger', {
       headers: {
         Authorization: `Bearer ${process.env.CRON_SECRET}`, // or hardcode
       },
