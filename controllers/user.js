@@ -122,6 +122,9 @@ const uploadFile = async (req, res) => {
     const mimeType = req.file.mimetype;
     const fileSizeInMB = req.file.size / (1024 * 1024); // Convert bytes to MB
 
+    // Super Admin UUID
+    const isSuperAdmin = uuid === "rWybQctzsvNvFoylACjDQRcjjoG2";
+
     // Allowed MIME types and their max file size limits (in MB)
     const fileSizeLimits = {
       "application/pdf": 2,
@@ -135,29 +138,31 @@ const uploadFile = async (req, res) => {
       "image/gif": 2,
     };
 
-    // Check if file type is allowed
-    if (!Object.keys(fileSizeLimits).includes(mimeType)) {
-      return res.status(400).json({ message: "Unsupported file type" });
-    }
+    if (!isSuperAdmin) {
+      // Check if file type is allowed
+      if (!Object.keys(fileSizeLimits).includes(mimeType)) {
+        return res.status(400).json({ message: "Unsupported file type" });
+      }
 
-    // Check file size limit
-    const maxAllowedSize = fileSizeLimits[mimeType];
-    if (fileSizeInMB > maxAllowedSize) {
-      return res.status(400).json({
-        message: `File size exceeds the limit. Max allowed size for ${mimeType.split("/")[1].toUpperCase()} is ${maxAllowedSize} MB.`,
-      });
+      // Check file size limit
+      const maxAllowedSize = fileSizeLimits[mimeType];
+      if (fileSizeInMB > maxAllowedSize) {
+        return res.status(400).json({
+          message: `File size exceeds the limit. Max allowed size for ${mimeType.split("/")[1].toUpperCase()} is ${maxAllowedSize} MB.`,
+        });
+      }
+
+      // Check user upload limit
+      const existingRecordCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
+      if (existingRecordCount >= 100) {
+        return res.status(400).json({ message: "Your upload limit is finished" });
+      }
     }
 
     // Determine folder based on file type
     let folder = "files/";
     if (mimeType.startsWith("video/")) {
       folder = "videos/";
-    }
-
-    // Check user upload limit
-    const existingRecordCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
-    if (existingRecordCount >= 100) {
-      return res.status(400).json({ message: "Your upload limit is finished" });
     }
 
     // === Branch 1: Video Files ===
