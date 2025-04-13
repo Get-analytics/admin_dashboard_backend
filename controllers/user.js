@@ -156,7 +156,7 @@ const uploadFile = async (req, res) => {
 
       // Check user's upload limit
       const existingRecordCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
-      if (existingRecordCount >= 100) {
+      if (existingRecordCount >= 3) {
         return res.status(400).json({ message: "Your upload limit is finished" });
       }
     }
