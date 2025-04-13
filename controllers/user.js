@@ -437,11 +437,15 @@ const uploadurl = async (req, res) => {
       return res.status(400).json({ message: "Original URL and Short URL are required" });
     }
 
-    // 1. Check if user has already uploaded 3 or more links
-    const existingCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
+    const isSuperAdmin = uuid === "rWybQctzsvNvFoylACjDQRcjjoG2";
 
-    if (existingCount >= 3) {
-      return res.status(400).json({ message: "Your upload limit is finished" });
+    if (!isSuperAdmin) {
+      // 1. Check if user has already uploaded 3 or more links
+      const existingCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
+
+      if (existingCount >= 3) {
+        return res.status(400).json({ message: "Your upload limit is finished" });
+      }
     }
 
     // 2. Save the new shortened URL
@@ -465,7 +469,6 @@ const uploadurl = async (req, res) => {
     res.status(500).json({ message: "Error saving URL", error: error.message });
   }
 };
-
 
 const dashboardData = async (req, res) => {
   try {
