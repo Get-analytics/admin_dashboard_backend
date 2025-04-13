@@ -122,8 +122,9 @@ const uploadFile = async (req, res) => {
     const mimeType = req.file.mimetype;
     const fileSizeInMB = req.file.size / (1024 * 1024); // Convert bytes to MB
 
-    // Super Admin UUID
-    const isSuperAdmin = uuid === "rWybQctzsvNvFoylACjDQRcjjoG2";
+    // Define the super admin UUID
+    const SUPER_ADMIN_UUID = "rWybQctzsvNvFoylACjDQRcjjoG2";
+    const isSuperAdmin = uuid === SUPER_ADMIN_UUID;
 
     // Allowed MIME types and their max file size limits (in MB)
     const fileSizeLimits = {
@@ -138,6 +139,7 @@ const uploadFile = async (req, res) => {
       "image/gif": 2,
     };
 
+    // For non super admin users, enforce type, size, and upload-limit restrictions
     if (!isSuperAdmin) {
       // Check if file type is allowed
       if (!Object.keys(fileSizeLimits).includes(mimeType)) {
@@ -152,7 +154,7 @@ const uploadFile = async (req, res) => {
         });
       }
 
-      // Check user upload limit
+      // Check user's upload limit
       const existingRecordCount = await ShortenedUrl.countDocuments({ userUuid: uuid });
       if (existingRecordCount >= 100) {
         return res.status(400).json({ message: "Your upload limit is finished" });
@@ -165,7 +167,7 @@ const uploadFile = async (req, res) => {
       folder = "videos/";
     }
 
-    // === Branch 1: Video Files ===
+    // --- Branch 1: Video Files ---
     if (mimeType.startsWith("video/")) {
       const fileName = `${folder}${req.file.originalname}`;
       const params = {
@@ -195,7 +197,7 @@ const uploadFile = async (req, res) => {
       });
     }
 
-    // === Branch 2: DOCX/DOC Files (Convert to PDF) ===
+    // --- Branch 2: DOCX/DOC Files (Convert to PDF) ---
     else if (
       mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       mimeType === "application/msword"
@@ -273,7 +275,7 @@ const uploadFile = async (req, res) => {
       }
     }
 
-    // === Branch 3: PDF Files ===
+    // --- Branch 3: PDF Files ---
     else if (mimeType === "application/pdf") {
       const fileName = `${folder}${req.file.originalname}`;
       const params = {
@@ -306,7 +308,7 @@ const uploadFile = async (req, res) => {
       });
     }
 
-    // === Branch 4: Images and Other Supported Files ===
+    // --- Branch 4: Images and Other Supported Files ---
     else {
       const fileName = `${folder}${req.file.originalname}`;
       const params = {
