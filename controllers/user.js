@@ -2402,14 +2402,17 @@ const getDeviceAnalyticsVideo = async (req, res) => {
 const getPdfviewanalytics = async (req, res) => {
   try {
     const { url } = req.body;
-    if (!url) return res.status(400).json({ message: "URL is required." });
+    if (!url)
+      return res.status(400).json({ message: "URL is required." });
 
     const pdfId = url.split("/").pop();
 
     // Fetch URL details from ShortenedUrl collection
     const urlData = await ShortenedUrl.findOne({ shortId: pdfId }).lean();
     if (!urlData) {
-      return res.status(404).json({ message: "No URL data found for this shortId." });
+      return res
+        .status(404)
+        .json({ message: "No URL data found for this shortId." });
     }
 
     const { totalPages } = urlData; // Extract total pages
@@ -2417,16 +2420,18 @@ const getPdfviewanalytics = async (req, res) => {
     // Fetch all analytics for the given pdfId
     const analyticsData = await Pdfanalytics.find({ pdfId }).lean();
     if (!analyticsData.length) {
-      return res.status(404).json({ message: "No analytics data found for this PDF." });
+      return res
+        .status(404)
+        .json({ message: "No analytics data found for this PDF." });
     }
 
     // Calculate total time spent per page
     const totalPageTime = {};
-    let totalTimeSpent = 0; // Variable to store total time spent across all users
+    let totalTimeSpent = 0; // Total time spent across all users
     let totalUsers = analyticsData.length; // Total number of users who viewed the PDF
 
     analyticsData.forEach((doc) => {
-      totalTimeSpent += doc.totalTimeSpent; // Sum up all the time spent
+      totalTimeSpent += doc.totalTimeSpent; // Sum total time spent
       Object.entries(doc.pageTimeSpent || {}).forEach(([page, time]) => {
         totalPageTime[page] = (totalPageTime[page] || 0) + time;
       });
@@ -2459,7 +2464,7 @@ const getPdfviewanalytics = async (req, res) => {
 
     // Select only the **top 7 pages** based on the most time spent
     const topPages = Object.entries(totalPageTime)
-      .sort((a, b) => b[1] - a[1]) // Sort pages by time spent (descending)
+      .sort((a, b) => b[1] - a[1]) // Sort pages by time spent in descending order
       .slice(0, 7) // Take only the top 7 pages
       .map(([page]) => parseInt(page)); // Extract page numbers
 
@@ -2478,25 +2483,52 @@ const getPdfviewanalytics = async (req, res) => {
       });
     });
 
-    // Convert to sorted array based on most selected text
+    // Convert to sorted array based on most selected text with count > 3
     const mostSelectedTexts = Array.from(textCountMap.values())
-      .filter(item => item.count > 3) // Only include texts with count > 1
-      .sort((a, b) => b.count - a.count || a.page - b.page); // Sort by count, then page
+      .filter(item => item.count > 3)
+      .sort((a, b) => b.count - a.count || a.page - b.page);
 
+    // ------------------------------------------------------------
+    // Aggregate clicked links similarly to selected texts
+    // ------------------------------------------------------------
+    const linkClickMap = new Map();
+    analyticsData.forEach((doc) => {
+      (doc.linkClicks || []).forEach(({ page, clickedLink }) => {
+        // Only consider pages within the topPages if needed
+        // If you want to filter clicks similarly, uncomment the following line:
+        // if (!topPages.includes(page)) return;
+
+        const key = `${clickedLink}|||${page}`;
+        if (!linkClickMap.has(key)) {
+          linkClickMap.set(key, { clickedLink, count: 1, page });
+        } else {
+          linkClickMap.get(key).count += 1;
+        }
+      });
+    });
+
+    // Convert the link click map to an array and sort it by count (and page)
+    const mostClickedLinks = Array.from(linkClickMap.values()).sort(
+      (a, b) => b.count - a.count || a.page - b.page
+    );
+
+    // ------------------------------------------------------------
+    // Return aggregated analytics with new clickedLinks field.
+    // ------------------------------------------------------------
     res.json({
       totalPageTime,
-      mostSelectedTexts, // Only most selected texts with count > 3
+      mostSelectedTexts,      // Most selected texts (only with count > 3)
+      mostClickedLinks,       // Newly aggregated clicked links with page and count
       totalPages,
-      topPages, // Send back the top 7 pages calculated
-      totalTimeReadable, // Return total time spent in readable format
-      averageTimeReadable, // Return average time spent per user in readable format
+      topPages,               // Top 7 pages
+      totalTimeReadable,      // Total time spent in readable format
+      averageTimeReadable,    // Average time spent per user in readable format
     });
   } catch (error) {
     console.error("Error fetching analytics data:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
 
 
 const getDeviceAnalyticsWeb = async (req, res) => {
