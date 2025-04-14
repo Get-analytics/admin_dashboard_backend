@@ -2480,7 +2480,7 @@ const getPdfviewanalytics = async (req, res) => {
 
     // Convert to sorted array based on most selected text
     const mostSelectedTexts = Array.from(textCountMap.values())
-      .filter(item => item.count > 3) // Only include texts with count > 3
+      .filter(item => item.count > 3) // Only include texts with count > 1
       .sort((a, b) => b.count - a.count || a.page - b.page); // Sort by count, then page
 
     res.json({
