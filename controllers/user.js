@@ -1326,42 +1326,44 @@ const calculateDailyAvg = (visits) => {
 };
 
 // Calculate percentage change based on visits' views from first to last day
-// Calculate percentage change based on views on the first day vs last day
-// Calculate percentage change based on views on the first day vs last day
+// Calculate percentage change comparing the most recent day (today) versus the previous day.
+// If an entry for yesterday does not exist, use the next available prior date.
 const calculateChange = (visits) => {
-  // If there are fewer than two visits, we cannot calculate change
-  if (visits.length <= 1) return 'no change'; // No change if only one visit
+  // Group visits by date (YYYY-MM-DD)
+  const dailyCounts = {};
+  visits.forEach(visit => {
+    const date = visit.toISOString().split('T')[0];
+    dailyCounts[date] = (dailyCounts[date] || 0) + 1;
+  });
+  
+  const dates = Object.keys(dailyCounts).sort(); // Sorted ascending (oldest to newest)
+  
+  if (dates.length < 2) return 'no change'; // Not enough days to compare
+  
+  // Last date (today-like)
+  const lastDate = dates[dates.length - 1];
 
-  // Sort the visits by date (earliest to latest)
-  visits.sort((a, b) => new Date(a) - new Date(b));
+  // Try to get "yesterday": subtract one day from lastDate
+  let yesterdayDate = new Date(lastDate);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
 
-  // Get the view count for the first and last visit day
-  const firstDay = visits[0].toISOString().split('T')[0];  // First visit day
-  const lastDay = visits[visits.length - 1].toISOString().split('T')[0]; // Last visit day
+  // If an exact yesterday exists use it; otherwise, use the day immediately before the last date.
+  let compareDate = dailyCounts[yesterdayStr] !== undefined ? yesterdayStr : dates[dates.length - 2];
 
-  // Filter the visits by first day and last day
-  const firstDayViews = visits.filter(visit => visit.toISOString().split('T')[0] === firstDay).length;
-  const lastDayViews = visits.filter(visit => visit.toISOString().split('T')[0] === lastDay).length;
+  const lastCount = dailyCounts[lastDate];
+  const compareCount = dailyCounts[compareDate];
 
-  // If there's no difference in view counts between the first and last day
-  if (firstDayViews === lastDayViews) {
-    return 'no change'; // Return no change if views are the same
-  }
-
-  // Calculate percentage change based on the difference in views between first and last day
-  const change = ((lastDayViews - firstDayViews) / firstDayViews) * 100;
-
-  // Return 'up' or 'down' based on whether views increased or decreased
-  return change > 0 ? 'up' : 'down';
+  if (lastCount === compareCount) return 'no change';
+  return lastCount > compareCount ? 'up' : 'down';
 };
 
-
-
-
 // Calculate progress based on the number of visits over time (simplified for demo)
+// (Progress here is computed by the timespan between the first and last visit in days, multiplied by 100)
 const calculateProgress = (visits) => {
-  const timeSpan = visits[visits.length - 1] - visits[0]; // Time span between first and last visit
-  const progress = (timeSpan / (1000 * 60 * 60 * 24)) * 100; // Progress based on time difference
+  if (visits.length === 0) return 0;
+  const timeSpan = visits[visits.length - 1] - visits[0]; // Time span in milliseconds
+  const progress = (timeSpan / (1000 * 60 * 60 * 24)) * 100; // Convert days to a percentage value
   return progress;
 };
 
@@ -1392,6 +1394,8 @@ const getPdfTraffic = async (req, res) => {
       const country = location.pop(); // Extract the country from location field
       const city = location.join(", "); // The city or district (e.g., "Mumbai")
       const region = visit.region; // Extract state (e.g., "Maharashtra")
+     
+      console.log(location,country,city,region, "reudce data" )
 
       const key = country;
 
@@ -1456,6 +1460,7 @@ const getPdfTraffic = async (req, res) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
 
 
 
