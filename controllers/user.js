@@ -220,7 +220,7 @@ const uploadFile = async (req, res) => {
           },
           {
             headers: {
-              Authorization: `Bearer secret_K8PWagmpP2RYCsKJ`,
+              Authorization: `Bearer secret_GKL0t1V3zYYDOOWM`,
               "Content-Type": "application/json",
             },
           }
