@@ -563,7 +563,7 @@ const dashboardData = async (req, res) => {
 
       // Add the record to the appropriate group.
       groupedData[category].push({
-        url: `https://view.sendnow.live/${urlDoc.shortId}`,
+        url: `https://sd4.live/${urlDoc.shortId}`,
         fileName: urlDoc.fileName || "N/A", // Include fileName in response
         createdDate: createdDateObj.toISOString().split("T")[0], // Format as "YYYY-MM-DD"
         timeAgo: timeAgo,
